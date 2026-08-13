@@ -23,24 +23,55 @@ V3 preserves Manual/V1 and the V2 router while adding reversible evaluated Model
 
 Drag files into the chat window or use the paperclip. The compact header shows `AUTO` and the selected stage types; **Route details** exposes the detected task, required capabilities, selected models, reason, events, fallbacks, and intermediate artifacts.
 
-## Install from source
+## Install
 
-MLX Local uses isolated uv tools for its local inference backends:
+### Team package
+
+Build the macOS 14+ Apple-silicon installer and verify its payload without installing it:
+
+```bash
+./scripts/build-package.sh
+# dist/MLX-Menu-3.1.1.5.pkg
+# dist/MLX-Menu-3.1.1.5.pkg.sha256
+```
+
+The package installs `MLX Menu.app` into `/Applications`. It deliberately contains no
+privileged install scripts, does not add a login item, and does not download Python
+runtimes or model weights. Recipients should install the backends they need first:
 
 ```bash
 uv tool install mlx-lm
 uv tool install mlx-vlm
 uv tool install 'mlx-audio[server]'
-./scripts/install.sh
 ```
 
-The source installer builds a release executable, installs `~/Applications/MLX Menu.app`,
-copies capability and benchmark metadata, ad-hoc signs the bundle, and installs a user
-LaunchAgent unless `--no-launch-at-login` is passed.
+A default local build is ad-hoc app-signed and the installer is unsigned, which is useful
+for package testing but triggers Gatekeeper on another Mac. For normal team distribution,
+build with Developer ID identities and a stored notary profile:
 
-Inference always runs offline (`HF_HUB_OFFLINE=1`). Model downloads are separate, explicit
-actions in the menu-bar panel. Cached weights use disk space but do not all remain resident
-in unified memory; only running Manual or Auto workers load weights.
+```bash
+CODESIGN_IDENTITY='Developer ID Application: …' \
+INSTALLER_IDENTITY='Developer ID Installer: …' \
+NOTARY_PROFILE='mlx-menu-notary' \
+./scripts/build-package.sh
+```
+
+See [`docs/package-distribution.md`](docs/package-distribution.md) for signing,
+notarization, recipient verification, upgrades, and the clean-Mac acceptance checklist.
+
+### Install from source
+
+```bash
+./scripts/install.sh                    # installs to ~/Applications and adds a LaunchAgent
+./scripts/install.sh --no-launch-at-login
+```
+
+The source installer and package builder share `scripts/build-app.sh`, so both ship the
+same executable, resources, version, and bundle metadata.
+
+Inference always runs offline (`HF_HUB_OFFLINE=1`). The menu-bar panel has a separate, explicit **Download Model** field for Hugging Face `owner/repository` IDs. Downloads can be cancelled, completed models appear immediately in Manual mode, and each cached row has a confirmed remove action. Auto mode refreshes its registry after the app restarts.
+
+Cached weights use disk space; they do not all stay resident in memory. Only running Manual/Auto workers load model weights into unified memory. Use **Stop Server** or quit MLX Menu to release that memory without deleting cached weights.
 
 ## V1 Manual mode
 
@@ -127,3 +158,4 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for module boundaries and backend rationa
 - Deterministic evidence runs first; low-confidence text uses Apple NaturalLanguage sentence embeddings locally. More domain-specific semantic labels still need evaluation.
 - Memory decisions use cached size plus measured peaks where available; macOS unified-memory pressure is not yet sampled continuously.
 - V1 streams tokens. Auto pipelines currently stream stage status and expose artifacts, then publish each completed stage response rather than token-level output.
+- This source export has no `.git` directory, so logical milestone commits could not be created here.

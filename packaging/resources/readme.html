@@ -1,0 +1,15 @@
+<!doctype html>
+<html><body>
+<h2>Requirements</h2>
+<ul>
+  <li>Apple silicon Mac running macOS 14 or newer</li>
+  <li><code>uv</code> and the MLX tools needed for the modalities your team uses</li>
+  <li>Enough local disk and unified memory for the selected model</li>
+</ul>
+<p>Before using every backend, install:</p>
+<pre>uv tool install mlx-lm
+uv tool install mlx-vlm
+uv tool install 'mlx-audio[server]'</pre>
+<p>Open MLX Menu from Applications after installation. Model downloads are always explicit. Inference workers bind only to <code>127.0.0.1</code>.</p>
+<p>The package does not add a login item. Add MLX Menu in System Settings → General → Login Items if desired.</p>
+</body></html>

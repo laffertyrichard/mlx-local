@@ -1,0 +1,14 @@
+# Swift Package Manager
+.build/
+.swiftpm/
+Package.resolved
+
+# macOS
+.DS_Store
+
+# Local agent/session artifacts
+session-logs/
+
+# IDE user state
+xcuserdata/
+*.xcuserstate

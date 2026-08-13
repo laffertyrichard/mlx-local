@@ -1,0 +1,154 @@
+{
+  "schema_version": 1,
+  "dataset_id": "construction-plan-tracer",
+  "dataset_version": "2",
+  "prompt_profile_id": "construction-json-v1",
+  "prompt": "You are a construction-plan evidence extractor. Treat each image independently. Return only JSON with this schema: {\"rooms\":[{\"source_image\":1,\"label\":\"string\",\"width_ft\":number,\"length_ft\":number,\"area_sq_ft\":number,\"uncertainty\":null}],\"comparison\":\"string\"}. Copy only visible labels and dimensions. Convert inches to fractional feet and compute area deterministically. Do not correct, speculate about, or comment on labels. If unreadable use null and explain in uncertainty.",
+  "prompt_frozen_at": "2026-08-09T04:14:56.011007Z",
+  "splits": {
+    "train": [],
+    "development": [
+      {
+        "id": "room-a-b",
+        "images": [
+          "Benchmarks/fixtures/room.png",
+          "Benchmarks/fixtures/room-b.png"
+        ],
+        "gold": {
+          "labels": [
+            "ROOM A",
+            "ROOM B"
+          ],
+          "areas": [
+            125.0,
+            99.0
+          ],
+          "dimensions": [
+            [
+              12.5,
+              10.0
+            ],
+            [
+              9.0,
+              11.0
+            ]
+          ]
+        },
+        "status": "used_for_prompt_development"
+      },
+      {
+        "id": "heldout-c-d",
+        "images": [
+          "V3/fixtures/heldout-c.png",
+          "V3/fixtures/heldout-d.png"
+        ],
+        "gold": {
+          "labels": [
+            "AREA C",
+            "STORAGE D"
+          ],
+          "dimensions": [
+            [
+              8.0,
+              13.0
+            ],
+            [
+              7.5,
+              12.0
+            ]
+          ],
+          "areas": [
+            104.0,
+            90.0
+          ]
+        },
+        "status": "moved_to_development_after_schema_observation"
+      }
+    ],
+    "held_out": [
+      {
+        "id": "heldout-e-f",
+        "images": [
+          "V3/fixtures/heldout-e.png",
+          "V3/fixtures/heldout-f.png"
+        ],
+        "gold": {
+          "labels": [
+            "LOBBY E",
+            "OFFICE F"
+          ],
+          "dimensions": [
+            [
+              14.0,
+              6.5
+            ],
+            [
+              10.25,
+              9.0
+            ]
+          ],
+          "areas": [
+            91.0,
+            92.25
+          ]
+        },
+        "status": "not_run_at_pipeline_freeze"
+      },
+      {
+        "id": "heldout-g-h",
+        "images": [
+          "V3/fixtures/heldout-g.png",
+          "V3/fixtures/heldout-h.png"
+        ],
+        "gold": {
+          "labels": [
+            "STAIR G",
+            "SUITE H"
+          ],
+          "dimensions": [
+            [
+              5.0,
+              15.0
+            ],
+            [
+              11.5,
+              8.5
+            ]
+          ],
+          "areas": [
+            75.0,
+            97.75
+          ]
+        },
+        "status": "not_run_when_added; frozen prompt/pipeline unchanged"
+      }
+    ]
+  },
+  "scoring": {
+    "per_claim": [
+      "exact_label",
+      "exact_dimensions",
+      "exact_area"
+    ],
+    "hallucination": "any unsupported correction/label/value",
+    "malformed": "not parseable JSON after optional markdown fence removal"
+  },
+  "profiles": [
+    {
+      "id": "qwen3-vl-8b-construction-json@1",
+      "base_model": "mlx-community/Qwen3-VL-8B-Instruct-4bit",
+      "max_tokens": 256,
+      "temperature": 0
+    },
+    {
+      "id": "qwen3-vl-30b-construction-json@1",
+      "base_model": "mlx-community/Qwen3-VL-30B-A3B-Instruct-4bit",
+      "max_tokens": 256,
+      "temperature": 0
+    }
+  ],
+  "pipeline_profile_id": "construction-json-normalizer-v1",
+  "pipeline_frozen_at": "2026-08-09T04:15:56.629761Z",
+  "normalizer_contract": "Strip optional markdown fence; accept object.rooms or list; lift room records into rooms and comparison record into comparison; reject missing required room keys; never alter observed values.",
+  "scorer_version": "construction-claims-v1"
+}

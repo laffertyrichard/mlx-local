@@ -1,0 +1,437 @@
+{
+  "schema_version": 2,
+  "definition": "profile-experiment-definition.json",
+  "definition_sha256": "35b16693b8a59d39fa7bdc3625c9f9ce6e42ca5d76b62f6af791b6ef1da99c3f",
+  "scorer_version": "construction-claims-v1",
+  "executed_at": "2026-08-09T04:40:02.532010Z",
+  "records": [
+    {
+      "split": "development",
+      "case": "room-a-b",
+      "profile": "qwen3-vl-8b-construction-json@1",
+      "base_model": "mlx-community/Qwen3-VL-8B-Instruct-4bit",
+      "total_milliseconds": 9581.71,
+      "exit": 0,
+      "first_token_milliseconds": null,
+      "peak_memory_bytes": null,
+      "input_manifest": {
+        "case": "room-a-b",
+        "images": {
+          "Benchmarks/fixtures/room.png": "2cd6dcb0c2c78f8eb63ccda4e0356f0fcdd37e28c953881459b61c552e9e19d6",
+          "Benchmarks/fixtures/room-b.png": "8912f6187ae2508c55891d8860fe00f641b86aeebae961e4591d22ddabaf7a5e"
+        },
+        "gold": {
+          "labels": [
+            "ROOM A",
+            "ROOM B"
+          ],
+          "dimensions": [
+            [
+              12.5,
+              10.0
+            ],
+            [
+              9.0,
+              11.0
+            ]
+          ],
+          "areas": [
+            125.0,
+            99.0
+          ]
+        },
+        "model_snapshot": "/Users/mccully/.cache/huggingface/hub/models--mlx-community--Qwen3-VL-8B-Instruct-4bit/snapshots/defcdea7cc7a4b0858fea563cbbce171d328e457",
+        "model_config_sha256": "cb750ae5688f3df07b110381d3dd54a7f2bfa9ec5175ae11e41305b516f3059a",
+        "prompt_sha256": "6b0c82f799b9a9ab4a6a259c70bbc41401fa1fb356f6d2bb1872a2e5870a99d0"
+      },
+      "input_manifest_sha256": "64f2ba27093461312219f69af2047699cba1ea2b76e702b15575acd8a7a37ab4",
+      "raw_output_sha256": "0e06232c7f62d2c95ebba5a23c6e3a1d2ab5728a5a1cbd513e0f494f51e2962c",
+      "output": "```json\n{\n  \"rooms\": [\n    {\n      \"source_image\": 1,\n      \"label\": \"ROOM A\",\n      \"width_ft\": 12.5,\n      \"length_ft\": 10.0,\n      \"area_sq_ft\": 125.0,\n      \"uncertainty\": null\n    },\n    {\n      \"source_image\": 2,\n      \"label\": \"ROOM B B\",\n      \"width_ft\": 9.0,\n      \"length_ft\": 11.0,\n      \"area_sq_ft\": 99.0,\n      \"uncertainty\": null\n    }\n  ],\n  \"comparison\": \"Room A is larger than Room B by 26 square feet.\"\n}\n```",
+      "score": {
+        "quality": 0.8333333333333334,
+        "claim_hits": 5,
+        "claim_total": 6,
+        "malformed": 0,
+        "unsupported_claims": 1
+      }
+    },
+    {
+      "split": "development",
+      "case": "room-a-b",
+      "profile": "qwen3-vl-30b-construction-json@1",
+      "base_model": "mlx-community/Qwen3-VL-30B-A3B-Instruct-4bit",
+      "total_milliseconds": 13067.8,
+      "exit": 0,
+      "first_token_milliseconds": null,
+      "peak_memory_bytes": null,
+      "input_manifest": {
+        "case": "room-a-b",
+        "images": {
+          "Benchmarks/fixtures/room.png": "2cd6dcb0c2c78f8eb63ccda4e0356f0fcdd37e28c953881459b61c552e9e19d6",
+          "Benchmarks/fixtures/room-b.png": "8912f6187ae2508c55891d8860fe00f641b86aeebae961e4591d22ddabaf7a5e"
+        },
+        "gold": {
+          "labels": [
+            "ROOM A",
+            "ROOM B"
+          ],
+          "dimensions": [
+            [
+              12.5,
+              10.0
+            ],
+            [
+              9.0,
+              11.0
+            ]
+          ],
+          "areas": [
+            125.0,
+            99.0
+          ]
+        },
+        "model_snapshot": "/Users/mccully/.cache/huggingface/hub/models--mlx-community--Qwen3-VL-30B-A3B-Instruct-4bit/snapshots/0555d34cb1ed80c0e61a5635194c70027b4c2ff3",
+        "model_config_sha256": "a359e1f7b90a5ea1db52063e03c652a0ab1df76bd87c40bd0e0ed4d0cc91a43c",
+        "prompt_sha256": "6b0c82f799b9a9ab4a6a259c70bbc41401fa1fb356f6d2bb1872a2e5870a99d0"
+      },
+      "input_manifest_sha256": "d6e64594a67f68d7b180f4e175064aa24de711236093d1b657152737c4c1d6fe",
+      "raw_output_sha256": "d099455e9bbb6921599282956ef3cff4a59b82ff64ac92440562a98fde69fc8e",
+      "output": "```json\n{\n  \"rooms\": [\n    {\n      \"source_image\": 1,\n      \"label\": \"ROOM A\",\n      \"width_ft\": 12.5,\n      \"length_ft\": 10.0,\n      \"area_sq_ft\": 125.0,\n      \"uncertainty\": null\n    },\n    {\n      \"source_image\": 2,\n      \"label\": \"ROOM B\",\n      \"width_ft\": 9.0,\n      \"length_ft\": 11.0,\n      \"area_sq_ft\": 99.0,\n      \"uncertainty\": null\n    }\n  ],\n  \"comparison\": \"ROOM A is larger than ROOM B\"\n}\n```",
+      "score": {
+        "quality": 1.0,
+        "claim_hits": 6,
+        "claim_total": 6,
+        "malformed": 0,
+        "unsupported_claims": 0
+      }
+    },
+    {
+      "split": "development",
+      "case": "heldout-c-d",
+      "profile": "qwen3-vl-8b-construction-json@1",
+      "base_model": "mlx-community/Qwen3-VL-8B-Instruct-4bit",
+      "total_milliseconds": 9959.94,
+      "exit": 0,
+      "first_token_milliseconds": null,
+      "peak_memory_bytes": null,
+      "input_manifest": {
+        "case": "heldout-c-d",
+        "images": {
+          "V3/fixtures/heldout-c.png": "4db773cac47624758710ca3e2164b122fcf6d2b46b950534c6f4651d91a364ad",
+          "V3/fixtures/heldout-d.png": "6ade5f6f680a7369bca6e2beff3514d72eb7769f03da3cb5b8e5ca06b1714e32"
+        },
+        "gold": {
+          "labels": [
+            "AREA C",
+            "STORAGE D"
+          ],
+          "dimensions": [
+            [
+              8.0,
+              13.0
+            ],
+            [
+              7.5,
+              12.0
+            ]
+          ],
+          "areas": [
+            104.0,
+            90.0
+          ]
+        },
+        "model_snapshot": "/Users/mccully/.cache/huggingface/hub/models--mlx-community--Qwen3-VL-8B-Instruct-4bit/snapshots/defcdea7cc7a4b0858fea563cbbce171d328e457",
+        "model_config_sha256": "cb750ae5688f3df07b110381d3dd54a7f2bfa9ec5175ae11e41305b516f3059a",
+        "prompt_sha256": "6b0c82f799b9a9ab4a6a259c70bbc41401fa1fb356f6d2bb1872a2e5870a99d0"
+      },
+      "input_manifest_sha256": "48810289cf9dbd3da5f2b0305066eaaa62046092abda8a9b7849d4cfc3f5d8dd",
+      "raw_output_sha256": "b9ba8e6b182b30b97be4aea0d26ed92be750ddaa8543c4856c594de12cf1402e",
+      "output": "```json\n{\n  \"rooms\": [\n    {\n      \"source_image\": 1,\n      \"label\": \"AREA C\",\n      \"width_ft\": 8,\n      \"length_ft\": 13,\n      \"area_sq_ft\": 104,\n      \"uncertainty\": null\n    },\n    {\n      \"source_image\": 2,\n      \"label\": \"STORAGE D\",\n      \"width_ft\": 7.5,\n      \"length_ft\": 12,\n      \"area_sq_ft\": 90,\n      \"uncertainty\": null\n    }\n  ],\n  \"comparison\": \"None\"\n}\n```",
+      "score": {
+        "quality": 1.0,
+        "claim_hits": 6,
+        "claim_total": 6,
+        "malformed": 0,
+        "unsupported_claims": 0
+      }
+    },
+    {
+      "split": "development",
+      "case": "heldout-c-d",
+      "profile": "qwen3-vl-30b-construction-json@1",
+      "base_model": "mlx-community/Qwen3-VL-30B-A3B-Instruct-4bit",
+      "total_milliseconds": 11323.94,
+      "exit": 0,
+      "first_token_milliseconds": null,
+      "peak_memory_bytes": null,
+      "input_manifest": {
+        "case": "heldout-c-d",
+        "images": {
+          "V3/fixtures/heldout-c.png": "4db773cac47624758710ca3e2164b122fcf6d2b46b950534c6f4651d91a364ad",
+          "V3/fixtures/heldout-d.png": "6ade5f6f680a7369bca6e2beff3514d72eb7769f03da3cb5b8e5ca06b1714e32"
+        },
+        "gold": {
+          "labels": [
+            "AREA C",
+            "STORAGE D"
+          ],
+          "dimensions": [
+            [
+              8.0,
+              13.0
+            ],
+            [
+              7.5,
+              12.0
+            ]
+          ],
+          "areas": [
+            104.0,
+            90.0
+          ]
+        },
+        "model_snapshot": "/Users/mccully/.cache/huggingface/hub/models--mlx-community--Qwen3-VL-30B-A3B-Instruct-4bit/snapshots/0555d34cb1ed80c0e61a5635194c70027b4c2ff3",
+        "model_config_sha256": "a359e1f7b90a5ea1db52063e03c652a0ab1df76bd87c40bd0e0ed4d0cc91a43c",
+        "prompt_sha256": "6b0c82f799b9a9ab4a6a259c70bbc41401fa1fb356f6d2bb1872a2e5870a99d0"
+      },
+      "input_manifest_sha256": "6f0c5cca48bc16dda1d9e7efa22154370998d6157e2ea58aa954d0194741713e",
+      "raw_output_sha256": "a065d9517981c271e138b2c67e102aa82fa8f45c78538ebb1ad3b73e257a4a30",
+      "output": "```json\n[\n  {\n    \"source_image\": 1,\n    \"label\": \"AREA C\",\n    \"width_ft\": 8,\n    \"length_ft\": 13,\n    \"area_sq_ft\": 104,\n    \"uncertainty\": null\n  },\n  {\n    \"source_image\": 2,\n    \"label\": \"STORAGE D\",\n    \"width_ft\": 7.5,\n    \"length_ft\": 12,\n    \"area_sq_ft\": 90,\n    \"uncertainty\": null\n  },\n  {\n    \"comparison\": \"The dimensions of AREA C (8'0\\\" x 13'0\\\") are larger than those of STORAGE D (7'6\\\" x 12'0\\\").\"\n  }\n]\n```",
+      "score": {
+        "quality": 1.0,
+        "claim_hits": 6,
+        "claim_total": 6,
+        "malformed": 0,
+        "unsupported_claims": 0
+      }
+    },
+    {
+      "split": "held_out",
+      "case": "heldout-e-f",
+      "profile": "qwen3-vl-8b-construction-json@1",
+      "base_model": "mlx-community/Qwen3-VL-8B-Instruct-4bit",
+      "total_milliseconds": 10235.13,
+      "exit": 0,
+      "first_token_milliseconds": null,
+      "peak_memory_bytes": null,
+      "input_manifest": {
+        "case": "heldout-e-f",
+        "images": {
+          "V3/fixtures/heldout-e.png": "053dc1708e6f503862dc55b08a99525fb00bfcbe9ea575f1a997c364092adbd6",
+          "V3/fixtures/heldout-f.png": "661fa00ac967596bb2efbbc2d6cefd33574d1574e9d4de7c0534d419594f7f26"
+        },
+        "gold": {
+          "labels": [
+            "LOBBY E",
+            "OFFICE F"
+          ],
+          "dimensions": [
+            [
+              14.0,
+              6.5
+            ],
+            [
+              10.25,
+              9.0
+            ]
+          ],
+          "areas": [
+            91.0,
+            92.25
+          ]
+        },
+        "model_snapshot": "/Users/mccully/.cache/huggingface/hub/models--mlx-community--Qwen3-VL-8B-Instruct-4bit/snapshots/defcdea7cc7a4b0858fea563cbbce171d328e457",
+        "model_config_sha256": "cb750ae5688f3df07b110381d3dd54a7f2bfa9ec5175ae11e41305b516f3059a",
+        "prompt_sha256": "6b0c82f799b9a9ab4a6a259c70bbc41401fa1fb356f6d2bb1872a2e5870a99d0"
+      },
+      "input_manifest_sha256": "e9aa0ec8c93c1c37a3092b095d9b58a261f08c41e95129a17f92af3f4c24e6e7",
+      "raw_output_sha256": "c4de8a3c80ba7bf2ec5742585bb8a3e51932b148bf346cd9084a9508fe59293c",
+      "output": "```json\n{\n  \"rooms\": [\n    {\n      \"source_image\": 1,\n      \"label\": \"LOBBY E\",\n      \"width_ft\": 14,\n      \"length_ft\": 6.5,\n      \"area_sq_ft\": 91,\n      \"uncertainty\": null\n    },\n    {\n      \"source_image\": 2,\n      \"label\": \"OFFICE F F\",\n      \"width_ft\": 10.25,\n      \"length_ft\": 9,\n      \"area_sq_ft\": 92.25,\n      \"uncertainty\": null\n    }\n  ],\n  \"comparison\": \"None\"\n}\n```",
+      "score": {
+        "quality": 0.8333333333333334,
+        "claim_hits": 5,
+        "claim_total": 6,
+        "malformed": 0,
+        "unsupported_claims": 1
+      }
+    },
+    {
+      "split": "held_out",
+      "case": "heldout-e-f",
+      "profile": "qwen3-vl-30b-construction-json@1",
+      "base_model": "mlx-community/Qwen3-VL-30B-A3B-Instruct-4bit",
+      "total_milliseconds": 10829.53,
+      "exit": 0,
+      "first_token_milliseconds": null,
+      "peak_memory_bytes": null,
+      "input_manifest": {
+        "case": "heldout-e-f",
+        "images": {
+          "V3/fixtures/heldout-e.png": "053dc1708e6f503862dc55b08a99525fb00bfcbe9ea575f1a997c364092adbd6",
+          "V3/fixtures/heldout-f.png": "661fa00ac967596bb2efbbc2d6cefd33574d1574e9d4de7c0534d419594f7f26"
+        },
+        "gold": {
+          "labels": [
+            "LOBBY E",
+            "OFFICE F"
+          ],
+          "dimensions": [
+            [
+              14.0,
+              6.5
+            ],
+            [
+              10.25,
+              9.0
+            ]
+          ],
+          "areas": [
+            91.0,
+            92.25
+          ]
+        },
+        "model_snapshot": "/Users/mccully/.cache/huggingface/hub/models--mlx-community--Qwen3-VL-30B-A3B-Instruct-4bit/snapshots/0555d34cb1ed80c0e61a5635194c70027b4c2ff3",
+        "model_config_sha256": "a359e1f7b90a5ea1db52063e03c652a0ab1df76bd87c40bd0e0ed4d0cc91a43c",
+        "prompt_sha256": "6b0c82f799b9a9ab4a6a259c70bbc41401fa1fb356f6d2bb1872a2e5870a99d0"
+      },
+      "input_manifest_sha256": "7fa87019809ba736be7ca79fc283e01e80887ebabf99aedd4470804b3da151ed",
+      "raw_output_sha256": "736d8d22c98f77493f39f4d6d41431524b1733b8359aa86313854e60393330f7",
+      "output": "```json\n{\n  \"rooms\": [\n    {\n      \"source_image\": 1,\n      \"label\": \"LOBBY E\",\n      \"width_ft\": 14,\n      \"length_ft\": 6.5,\n      \"area_sq_ft\": 91,\n      \"uncertainty\": null\n    },\n    {\n      \"source_image\": 2,\n      \"label\": \"OFFICE F\",\n      \"width_ft\": 10.25,\n      \"length_ft\": 9,\n      \"area_sq_ft\": 92.25,\n      \"uncertainty\": null\n    }\n  ],\n  \"comparison\": \"The two rooms have similar areas, with OFFICE F (92.25 sq ft) being slightly larger than LOBBY E (91 sq ft).\"\n}\n```",
+      "score": {
+        "quality": 1.0,
+        "claim_hits": 6,
+        "claim_total": 6,
+        "malformed": 0,
+        "unsupported_claims": 0
+      }
+    },
+    {
+      "split": "held_out",
+      "case": "heldout-g-h",
+      "profile": "qwen3-vl-8b-construction-json@1",
+      "base_model": "mlx-community/Qwen3-VL-8B-Instruct-4bit",
+      "total_milliseconds": 10683.44,
+      "exit": 0,
+      "first_token_milliseconds": null,
+      "peak_memory_bytes": null,
+      "input_manifest": {
+        "case": "heldout-g-h",
+        "images": {
+          "V3/fixtures/heldout-g.png": "deb6bcab125e0ba4a33463432c4501f4d9e3c6b5f8e32b78962b035c5775beef",
+          "V3/fixtures/heldout-h.png": "78b0991e132dd7b6e3630bd84f5b6997cfc637c0ad1b4f98f865f50271c03f3e"
+        },
+        "gold": {
+          "labels": [
+            "STAIR G",
+            "SUITE H"
+          ],
+          "dimensions": [
+            [
+              5.0,
+              15.0
+            ],
+            [
+              11.5,
+              8.5
+            ]
+          ],
+          "areas": [
+            75.0,
+            97.75
+          ]
+        },
+        "model_snapshot": "/Users/mccully/.cache/huggingface/hub/models--mlx-community--Qwen3-VL-8B-Instruct-4bit/snapshots/defcdea7cc7a4b0858fea563cbbce171d328e457",
+        "model_config_sha256": "cb750ae5688f3df07b110381d3dd54a7f2bfa9ec5175ae11e41305b516f3059a",
+        "prompt_sha256": "6b0c82f799b9a9ab4a6a259c70bbc41401fa1fb356f6d2bb1872a2e5870a99d0"
+      },
+      "input_manifest_sha256": "f4fda24cdda0790eca08a652013fa5bcbb7fad01dc2e153660685ea47c098da0",
+      "raw_output_sha256": "5774cbeb4710cf98e2d29cec94c2b4e79615776126131745221fe308bc8a7a60",
+      "output": "```json\n{\n  \"rooms\": [\n    {\n      \"source_image\": 1,\n      \"label\": \"STAIR G\",\n      \"width_ft\": 5,\n      \"length_ft\": 15,\n      \"area_sq_ft\": 75,\n      \"uncertainty\": null\n    },\n    {\n      \"source_image\": 2,\n      \"label\": \"SUITE H\",\n      \"width_ft\": 8.5,\n      \"length_ft\": 11.5,\n      \"area_sq_ft\": 99.25,\n      \"uncertainty\": null\n    }\n  ],\n  \"comparison\": \"STAIR G is smaller than SUITE H by area.\"\n}\n```",
+      "score": {
+        "quality": 0.6666666666666666,
+        "claim_hits": 4,
+        "claim_total": 6,
+        "malformed": 0,
+        "unsupported_claims": 2
+      }
+    },
+    {
+      "split": "held_out",
+      "case": "heldout-g-h",
+      "profile": "qwen3-vl-30b-construction-json@1",
+      "base_model": "mlx-community/Qwen3-VL-30B-A3B-Instruct-4bit",
+      "total_milliseconds": 13793.28,
+      "exit": 0,
+      "first_token_milliseconds": null,
+      "peak_memory_bytes": null,
+      "input_manifest": {
+        "case": "heldout-g-h",
+        "images": {
+          "V3/fixtures/heldout-g.png": "deb6bcab125e0ba4a33463432c4501f4d9e3c6b5f8e32b78962b035c5775beef",
+          "V3/fixtures/heldout-h.png": "78b0991e132dd7b6e3630bd84f5b6997cfc637c0ad1b4f98f865f50271c03f3e"
+        },
+        "gold": {
+          "labels": [
+            "STAIR G",
+            "SUITE H"
+          ],
+          "dimensions": [
+            [
+              5.0,
+              15.0
+            ],
+            [
+              11.5,
+              8.5
+            ]
+          ],
+          "areas": [
+            75.0,
+            97.75
+          ]
+        },
+        "model_snapshot": "/Users/mccully/.cache/huggingface/hub/models--mlx-community--Qwen3-VL-30B-A3B-Instruct-4bit/snapshots/0555d34cb1ed80c0e61a5635194c70027b4c2ff3",
+        "model_config_sha256": "a359e1f7b90a5ea1db52063e03c652a0ab1df76bd87c40bd0e0ed4d0cc91a43c",
+        "prompt_sha256": "6b0c82f799b9a9ab4a6a259c70bbc41401fa1fb356f6d2bb1872a2e5870a99d0"
+      },
+      "input_manifest_sha256": "8aca92e2e3190a14227ae9cab19a3bc22f1c68d9fd7759a2cbee65e776796680",
+      "raw_output_sha256": "219f3005539a182b04c4ef096ee0f870ec5bb65fb5ba8eb54ad59488bfa8fb72",
+      "output": "```json\n{\n  \"rooms\": [\n    {\n      \"source_image\": 1,\n      \"label\": \"STAIR G\",\n      \"width_ft\": 5,\n      \"length_ft\": 15,\n      \"area_sq_ft\": 75,\n      \"uncertainty\": null\n    },\n    {\n      \"source_image\": 2,\n      \"label\": \"SUITE H\",\n      \"width_ft\": 11.5,\n      \"length_ft\": 8.5,\n      \"area_sq_ft\": 97.75,\n      \"uncertainty\": null\n    }\n  ],\n  \"comparison\": \"The two rooms have different labels and dimensions. STAIR G is 5'0\\\" x 15'0\\\" (75 sq ft), while SUITE H is 11'6\\\" x 8'6\\\" (97.75 sq ft).\"\n}\n```",
+      "score": {
+        "quality": 1.0,
+        "claim_hits": 6,
+        "claim_total": 6,
+        "malformed": 0,
+        "unsupported_claims": 0
+      }
+    }
+  ],
+  "aggregate": {
+    "qwen3-vl-8b-construction-json@1": {
+      "development_quality": 0.9166666666666667,
+      "held_out_quality": 0.75,
+      "independent_held_out_cases": 2,
+      "median_total_milliseconds": 10097.535,
+      "unsupported_claims": 4,
+      "malformed_outputs": 0,
+      "failures": 0
+    },
+    "qwen3-vl-30b-construction-json@1": {
+      "development_quality": 1.0,
+      "held_out_quality": 1.0,
+      "independent_held_out_cases": 2,
+      "median_total_milliseconds": 12195.869999999999,
+      "unsupported_claims": 0,
+      "malformed_outputs": 0,
+      "failures": 0
+    }
+  },
+  "evidence_digest": "82de7948c5f49d126716fa626403d6fca0ec64ac13e7cf207eccee35f7439194",
+  "decision": {
+    "promote": "qwen3-vl-30b-construction-json@1",
+    "baseline": "qwen3-vl-8b-construction-json@1",
+    "rationale": "30B is exact across development and two independent fresh held-out cases; 8B emits unsupported labels/dimensions/areas.",
+    "adapter_training": "not justified; cheaper profile and deterministic arithmetic controls have not plateaued on a sufficiently large corpus"
+  },
+  "scorer_source_sha256": "9062a824b7e824dff470ce008caa4c923804b06870e15a6b44eb793d2113ce85"
+}

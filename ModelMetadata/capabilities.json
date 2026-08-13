@@ -1,0 +1,249 @@
+{
+  "mlx-community/Kimi-VL-A3B-Thinking-2506-6bit": {
+    "backend": "mlx-vlm",
+    "capabilities": [
+      "general_chat",
+      "reasoning",
+      "vision",
+      "multi_image_vision",
+      "document_understanding",
+      "visual_reasoning",
+      "structured_extraction",
+      "comparison"
+    ],
+    "inputModalities": [
+      "text",
+      "image",
+      "document"
+    ],
+    "outputModalities": [
+      "text"
+    ],
+    "supportsMultipleImages": true,
+    "supportsStructuredOutput": true
+  },
+  "mlx-community/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-4bit": {
+    "backend": "mlx-lm",
+    "capabilities": [
+      "general_chat",
+      "reasoning",
+      "coding",
+      "long_context",
+      "structured_extraction",
+      "tool_use",
+      "summarization",
+      "comparison"
+    ],
+    "inputModalities": [
+      "text",
+      "code"
+    ],
+    "outputModalities": [
+      "text"
+    ],
+    "strengths": [
+      "think-on reasoning",
+      "fast structured output",
+      "tool-call formatting"
+    ],
+    "supportsStructuredOutput": true,
+    "supportsToolUse": true,
+    "weaknesses": [
+      "weaker no-think coding than Qwen3.6-35B-A3B",
+      "thinking increases latency"
+    ]
+  },
+  "mlx-community/Qwen2.5-Coder-32B-Instruct-4bit": {
+    "backend": "mlx-lm",
+    "capabilities": [
+      "general_chat",
+      "reasoning",
+      "coding",
+      "long_context",
+      "structured_extraction",
+      "tool_use",
+      "summarization"
+    ],
+    "inputModalities": [
+      "text",
+      "code"
+    ],
+    "outputModalities": [
+      "text"
+    ],
+    "strengths": [
+      "coding"
+    ],
+    "supportsStructuredOutput": true,
+    "supportsToolUse": true,
+    "weaknesses": [
+      "dense memory use",
+      "not multimodal"
+    ]
+  },
+  "mlx-community/Qwen3-ASR-0.6B-8bit": {
+    "backend": "whisper-mlx",
+    "capabilities": [
+      "speech_to_text",
+      "audio_understanding"
+    ],
+    "inputModalities": [
+      "audio"
+    ],
+    "outputModalities": [
+      "text"
+    ],
+    "strengths": [
+      "fast multilingual transcription",
+      "small memory footprint"
+    ],
+    "supportsMultipleImages": false,
+    "supportsStructuredOutput": true,
+    "weaknesses": [
+      "no diarization benchmark yet"
+    ]
+  },
+  "mlx-community/Qwen3-Coder-30B-A3B-Instruct-4bit": {
+    "backend": "mlx-lm",
+    "capabilities": [
+      "general_chat",
+      "reasoning",
+      "coding",
+      "long_context",
+      "structured_extraction",
+      "tool_use",
+      "summarization"
+    ],
+    "inputModalities": [
+      "text",
+      "code"
+    ],
+    "outputModalities": [
+      "text"
+    ],
+    "strengths": [
+      "coding",
+      "tool JSON"
+    ],
+    "supportsStructuredOutput": true,
+    "supportsToolUse": true,
+    "weaknesses": [
+      "not multimodal"
+    ]
+  },
+  "mlx-community/Qwen3-VL-30B-A3B-Instruct-4bit": {
+    "backend": "mlx-vlm",
+    "capabilities": [
+      "general_chat",
+      "reasoning",
+      "vision",
+      "multi_image_vision",
+      "document_understanding",
+      "visual_reasoning",
+      "structured_extraction",
+      "comparison",
+      "summarization"
+    ],
+    "inputModalities": [
+      "text",
+      "image",
+      "document"
+    ],
+    "outputModalities": [
+      "text"
+    ],
+    "strengths": [
+      "complex visual reasoning"
+    ],
+    "supportsMultipleImages": true,
+    "supportsStructuredOutput": true,
+    "weaknesses": [
+      "high memory",
+      "observed output looping"
+    ]
+  },
+  "mlx-community/Qwen3-VL-8B-Instruct-4bit": {
+    "backend": "mlx-vlm",
+    "capabilities": [
+      "general_chat",
+      "reasoning",
+      "vision",
+      "multi_image_vision",
+      "document_understanding",
+      "visual_reasoning",
+      "structured_extraction",
+      "comparison",
+      "summarization"
+    ],
+    "inputModalities": [
+      "text",
+      "image",
+      "document"
+    ],
+    "outputModalities": [
+      "text"
+    ],
+    "strengths": [
+      "fast vision",
+      "multi-image"
+    ],
+    "supportsMultipleImages": true,
+    "supportsStructuredOutput": true,
+    "weaknesses": [
+      "whole-sheet small text recall"
+    ]
+  },
+  "mlx-community/dots.ocr-8bit": {
+    "backend": "mlx-vlm",
+    "capabilities": [
+      "OCR",
+      "document_understanding",
+      "structured_extraction"
+    ],
+    "inputModalities": [
+      "text",
+      "image",
+      "document"
+    ],
+    "outputModalities": [
+      "text"
+    ],
+    "strengths": [
+      "fast OCR",
+      "layout recall"
+    ],
+    "supportsMultipleImages": false,
+    "supportsStructuredOutput": true,
+    "weaknesses": [
+      "repetition risk",
+      "native prompt required",
+      "not a general visual reasoner"
+    ]
+  },
+  "mlx-community/olmOCR-7B-0725-8bit": {
+    "backend": "mlx-vlm",
+    "capabilities": [
+      "OCR",
+      "document_understanding",
+      "structured_extraction"
+    ],
+    "inputModalities": [
+      "text",
+      "image",
+      "document"
+    ],
+    "outputModalities": [
+      "text"
+    ],
+    "strengths": [
+      "numeric OCR",
+      "scanned documents"
+    ],
+    "supportsMultipleImages": false,
+    "supportsStructuredOutput": true,
+    "weaknesses": [
+      "slower than compact OCR models",
+      "not a general visual reasoner"
+    ]
+  }
+}

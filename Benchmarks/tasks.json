@@ -1,0 +1,89 @@
+{
+  "general_chat": {
+    "prompt": "Reply with the exact phrase LOCAL ROUTER READY.",
+    "expected": [
+      "local router ready"
+    ]
+  },
+  "reasoning": {
+    "prompt": "A box has 3 red and 2 blue balls. Two are drawn without replacement. Explain the probability both are red.",
+    "expected": [
+      "3/10"
+    ]
+  },
+  "coding": {
+    "prompt": "Explain the failure in this Python file and provide a safe fix.",
+    "input": "Benchmarks/fixtures/sample.py",
+    "expected": [
+      "zerodivision",
+      "zero"
+    ]
+  },
+  "OCR": {
+    "prompt": "Extract the text content from this image.",
+    "input": "Benchmarks/fixtures/room.png",
+    "expected": [
+      "room a",
+      "12",
+      "10"
+    ]
+  },
+  "document_understanding": {
+    "prompt": "Extract every room dimension from this scanned plan.",
+    "input": "Benchmarks/fixtures/scanned-plan.pdf",
+    "expected": [
+      "room a",
+      "12",
+      "10"
+    ]
+  },
+  "vision": {
+    "prompt": "Read the room label and dimensions.",
+    "input": "Benchmarks/fixtures/room.png",
+    "expected": [
+      "room a",
+      "12",
+      "10"
+    ]
+  },
+  "visual_reasoning": {
+    "prompt": "Is this room wider or longer? Explain using the shown dimensions.",
+    "input": "Benchmarks/fixtures/room.png",
+    "expected": [
+      "longer",
+      "12"
+    ]
+  },
+  "multi_image_vision": {
+    "prompt": "Compare the room names and dimensions in both images.",
+    "inputs": [
+      "Benchmarks/fixtures/room.png",
+      "Benchmarks/fixtures/room-b.png"
+    ],
+    "expected": [
+      "room a",
+      "room b",
+      "12",
+      "11"
+    ]
+  },
+  "speech_to_text": {
+    "prompt": "Transcribe this audio.",
+    "input": "Benchmarks/fixtures/meeting.wav",
+    "expected": [
+      "apollo",
+      "tuesday",
+      "forty-two",
+      "alice"
+    ]
+  },
+  "structured_extraction": {
+    "prompt": "Return JSON with room and dimensions.",
+    "input": "Benchmarks/fixtures/room.png",
+    "expected": [
+      "room",
+      "dimensions"
+    ],
+    "require_json": true
+  }
+}

@@ -1,0 +1,161 @@
+{
+  "mlx-community/Huihui-Qwen3.6-27B-abliterated-4.5bit-msq": [
+    {
+      "capability": "coding",
+      "failures": 0,
+      "malformedOutputs": 0,
+      "measuredAt": "2026-08-09T00:00:00Z",
+      "quality": 0.971,
+      "tokensPerSecond": 25
+    },
+    {
+      "capability": "reasoning",
+      "failures": 0,
+      "malformedOutputs": 0,
+      "measuredAt": "2026-08-09T00:00:00Z",
+      "quality": 0.937,
+      "tokensPerSecond": 25
+    }
+  ],
+  "mlx-community/Qwen3-30B-A3B-Instruct-2507-4bit": [
+    {
+      "capability": "general_chat",
+      "failures": 0,
+      "malformedOutputs": 0,
+      "measuredAt": "2026-08-09T00:00:00Z",
+      "quality": 0.965,
+      "tokensPerSecond": 61
+    }
+  ],
+  "mlx-community/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-4bit": [
+    {
+      "capability": "coding",
+      "failures": 0,
+      "malformedOutputs": 0,
+      "measuredAt": "2026-08-12T00:00:00Z",
+      "peakMemoryBytes": 17883000000,
+      "quality": 0.837,
+      "tokensPerSecond": 77.6
+    },
+    {
+      "capability": "reasoning",
+      "failures": 0,
+      "malformedOutputs": 0,
+      "measuredAt": "2026-08-12T00:00:00Z",
+      "peakMemoryBytes": 17883000000,
+      "quality": 1.0,
+      "totalMilliseconds": 247700,
+      "tokensPerSecond": 63.3
+    },
+    {
+      "capability": "structured_extraction",
+      "failures": 1,
+      "malformedOutputs": 0,
+      "measuredAt": "2026-08-12T00:00:00Z",
+      "peakMemoryBytes": 17883000000,
+      "quality": 0.8,
+      "totalMilliseconds": 185400,
+      "tokensPerSecond": 74.6
+    }
+  ],
+  "mlx-community/Qwen3-ASR-0.6B-8bit": [
+    {
+      "capability": "speech_to_text",
+      "failures": 0,
+      "malformedOutputs": 0,
+      "measuredAt": "2026-08-09T00:00:00Z",
+      "peakMemoryBytes": 1810000000,
+      "quality": 1.0,
+      "totalMilliseconds": 190
+    }
+  ],
+  "mlx-community/Qwen3-VL-30B-A3B-Instruct-4bit": [
+    {
+      "capability": "vision",
+      "failures": 0,
+      "malformedOutputs": 1,
+      "measuredAt": "2026-08-09T00:00:00Z",
+      "peakMemoryBytes": 19570000000,
+      "quality": 0.571,
+      "totalMilliseconds": 30000
+    }
+  ],
+  "mlx-community/Qwen3-VL-8B-Instruct-4bit": [
+    {
+      "capability": "vision",
+      "failures": 1,
+      "malformedOutputs": 0,
+      "measuredAt": "2026-08-09T00:00:00Z",
+      "peakMemoryBytes": 7220000000,
+      "quality": 0.643,
+      "totalMilliseconds": 10900
+    },
+    {
+      "capability": "visual_reasoning",
+      "failures": 1,
+      "malformedOutputs": 0,
+      "measuredAt": "2026-08-09T00:00:00Z",
+      "peakMemoryBytes": 7220000000,
+      "quality": 0.62,
+      "totalMilliseconds": 10900
+    }
+  ],
+  "mlx-community/Qwen3.6-35B-A3B-4bit": [
+    {
+      "capability": "general_chat",
+      "failures": 0,
+      "malformedOutputs": 0,
+      "measuredAt": "2026-08-09T00:00:00Z",
+      "quality": 0.965,
+      "tokensPerSecond": 55
+    },
+    {
+      "capability": "coding",
+      "failures": 0,
+      "malformedOutputs": 0,
+      "measuredAt": "2026-08-09T00:00:00Z",
+      "quality": 0.943,
+      "tokensPerSecond": 55
+    }
+  ],
+  "mlx-community/dots.ocr-8bit": [
+    {
+      "capability": "OCR",
+      "failures": 0,
+      "malformedOutputs": 2,
+      "measuredAt": "2026-08-09T00:00:00Z",
+      "peakMemoryBytes": 6020000000,
+      "quality": 0.6581,
+      "tokensPerSecond": 110
+    },
+    {
+      "capability": "structured_extraction",
+      "failures": 0,
+      "malformedOutputs": 2,
+      "measuredAt": "2026-08-09T00:00:00Z",
+      "peakMemoryBytes": 6020000000,
+      "quality": 0.6087,
+      "tokensPerSecond": 110
+    }
+  ],
+  "mlx-community/olmOCR-7B-0725-8bit": [
+    {
+      "capability": "OCR",
+      "failures": 0,
+      "malformedOutputs": 0,
+      "measuredAt": "2026-08-09T00:00:00Z",
+      "peakMemoryBytes": 10670000000,
+      "quality": 0.6748,
+      "tokensPerSecond": 30
+    },
+    {
+      "capability": "structured_extraction",
+      "failures": 0,
+      "malformedOutputs": 0,
+      "measuredAt": "2026-08-09T00:00:00Z",
+      "peakMemoryBytes": 10670000000,
+      "quality": 0.646,
+      "tokensPerSecond": 30
+    }
+  ]
+}

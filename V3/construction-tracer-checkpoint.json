@@ -1,0 +1,169 @@
+{
+  "activeExecutionMilliseconds" : 30490.39590358734,
+  "actualModelIDs" : [
+    "mlx-community\/Qwen3-VL-30B-A3B-Instruct-4bit"
+  ],
+  "artifactDigests" : [
+    "e2d2431886582af0514a6337b54e159870ede605d5cc52c16667024acdf45ef0"
+  ],
+  "artifacts" : [
+    {
+      "content" : "```json\n{\n  \"rooms\": [\n    {\n      \"source_image\": 1,\n      \"label\": \"LOBBY E\",\n      \"width_ft\": 14,\n      \"length_ft\": 6.5,\n      \"area_sq_ft\": 91,\n      \"uncertainty\": null\n    },\n    {\n      \"source_image\": 2,\n      \"label\": \"OFFICE F\",\n      \"width_ft\": 10.25,\n      \"length_ft\": 9,\n      \"area_sq_ft\": 92.25,\n      \"uncertainty\": null\n    }\n  ],\n  \"comparison\": \"The two images display separate rooms with distinct labels and dimensions. The first image shows 'LOBBY E' with dimensions 14'0\\\" x 6'6\\\" (14 ft x 6.5 ft), resulting in an area of 91 sq ft. The second image shows 'OFFICE F' with dimensions 10'3\\\" x 9'0\\\" (10.25 ft x 9 ft), resulting in an area of 92.25 sq ft. The labels and dimensions are clearly visible and distinct.\"\n}\n```",
+      "id" : "0177F079-3B1B-4041-81C9-7FBCD671135F",
+      "kind" : "visionObservations",
+      "metadata" : {
+        "backend" : "mlx-vlm",
+        "items" : "2",
+        "model" : "mlx-community\/Qwen3-VL-30B-A3B-Instruct-4bit"
+      },
+      "sourceURLs" : [
+        "file:\/\/\/Users\/mccully\/projects\/prime-agent-claude\/V3\/fixtures\/heldout-e.png",
+        "file:\/\/\/Users\/mccully\/projects\/prime-agent-claude\/V3\/fixtures\/heldout-f.png"
+      ]
+    }
+  ],
+  "completedStageCount" : 1,
+  "context" : {
+    "configurationDigest" : "899a9056a22a832229c07c38097553ae9e6214dcc05ab172aab37df6d291f19b",
+    "pipelineVersion" : "construction-tracer-v1",
+    "preprocessingVersion" : "construction-v1",
+    "profileDigests" : [
+      "e3701c6b8cd7d6c5c0c65b96522073816f57dfba786f8c98a44302c39bcfa173"
+    ],
+    "schemaVersion" : 2,
+    "sourceIdentities" : [
+      {
+        "byteCount" : 12917,
+        "digest" : "053dc1708e6f503862dc55b08a99525fb00bfcbe9ea575f1a997c364092adbd6",
+        "modifiedAt" : "2026-08-09T04:16:09Z",
+        "path" : "\/Users\/mccully\/projects\/prime-agent-claude\/V3\/fixtures\/heldout-e.png"
+      },
+      {
+        "byteCount" : 13083,
+        "digest" : "661fa00ac967596bb2efbbc2d6cefd33574d1574e9d4de7c0534d419594f7f26",
+        "modifiedAt" : "2026-08-09T04:16:09Z",
+        "path" : "\/Users\/mccully\/projects\/prime-agent-claude\/V3\/fixtures\/heldout-f.png"
+      }
+    ]
+  },
+  "decision" : {
+    "reason" : "Construction tracer: evaluated local vision profile followed by deterministic claim validation.",
+    "requestID" : "EBD4F064-B013-4163-B973-3D58655E281B",
+    "requirements" : {
+      "category" : "comparison",
+      "confidence" : 1,
+      "evidence" : [
+
+      ],
+      "inputModalities" : [
+        "image"
+      ],
+      "minimumContextTokens" : 0,
+      "requiredCapabilities" : [
+        "vision",
+        "multi_image_vision",
+        "comparison"
+      ],
+      "requiresStructuredOutput" : true
+    },
+    "scores" : {
+
+    },
+    "stages" : [
+      {
+        "backend" : "mlx-vlm",
+        "fallbackModelIDs" : [
+
+        ],
+        "id" : "B95EFD09-B464-4B85-96EC-28028583724E",
+        "inputModalities" : [
+          "image"
+        ],
+        "kind" : "visionExtraction",
+        "modelID" : "mlx-community\/Qwen3-VL-30B-A3B-Instruct-4bit",
+        "modelProfile" : {
+          "backendOptions" : {
+            "schema_normalizer" : "construction-rooms-v1"
+          },
+          "baseModelID" : "mlx-community\/Qwen3-VL-30B-A3B-Instruct-4bit",
+          "capabilities" : [
+            "vision",
+            "multi_image_vision"
+          ],
+          "createdAt" : "2026-08-09T04:15:56Z",
+          "fewShotExamples" : [
+
+          ],
+          "generation" : {
+            "maxOutputTokens" : 256,
+            "promptCacheEnabled" : true,
+            "stopSequences" : [
+
+            ],
+            "temperature" : 0
+          },
+          "id" : "qwen3-vl-30b-construction-json",
+          "lifecycle" : "current",
+          "preprocessing" : {
+            "chunkOverlap" : 400,
+            "chunkSize" : 8000,
+            "contrastNormalization" : false,
+            "imageGrouping" : 2,
+            "maximumImageDimension" : 4096,
+            "pdfDPI" : 144,
+            "version" : "construction-v1"
+          },
+          "promptTemplateVersion" : "construction-json-v1",
+          "systemPrompt" : "You are a construction-plan evidence extractor. Treat each image independently. Return only JSON with this schema: {\"rooms\":[{\"source_image\":1,\"label\":\"string\",\"width_ft\":number,\"length_ft\":number,\"area_sq_ft\":number,\"uncertainty\":null}],\"comparison\":\"string\"}. Copy only visible labels and dimensions. Convert inches to fractional feet and compute area deterministically. Do not correct, speculate about, or comment on labels. If unreadable use null and explain in uncertainty.",
+          "taskClasses" : [
+            "comparison"
+          ],
+          "taskInstruction" : "",
+          "version" : "1"
+        },
+        "requiredCapabilities" : [
+          "vision",
+          "multi_image_vision"
+        ]
+      },
+      {
+        "backend" : "native-document",
+        "fallbackModelIDs" : [
+
+        ],
+        "id" : "42FC983F-17ED-4421-ACAB-1D0FC47B512D",
+        "inputModalities" : [
+          "text"
+        ],
+        "kind" : "validation",
+        "requiredCapabilities" : [
+
+        ],
+        "validationContract" : "construction-json-arithmetic-v1"
+      }
+    ],
+    "warnings" : [
+
+    ]
+  },
+  "fallbacks" : [
+
+  ],
+  "stageTelemetry" : [
+    {
+      "actualModelID" : "mlx-community\/Qwen3-VL-30B-A3B-Instruct-4bit",
+      "cacheHit" : false,
+      "estimatedActiveMemoryBytes" : 22505500000,
+      "inferenceMilliseconds" : 25682.532906532288,
+      "kind" : "visionExtraction",
+      "loadMilliseconds" : 4807.862997055054,
+      "profileID" : "qwen3-vl-30b-construction-json@1",
+      "requestedModelID" : "mlx-community\/Qwen3-VL-30B-A3B-Instruct-4bit",
+      "retries" : 0,
+      "reused" : false,
+      "stageIndex" : 0,
+      "wallMilliseconds" : 30490.39590358734
+    }
+  ],
+  "startedAt" : "2026-08-09T04:42:26Z"
+}

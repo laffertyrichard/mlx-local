@@ -1,0 +1,142 @@
+{
+  "profiles": [
+    {
+      "id": "qwen3-vl-8b-construction-json",
+      "version": "1",
+      "baseModelID": "mlx-community/Qwen3-VL-8B-Instruct-4bit",
+      "taskClasses": [
+        "comparison"
+      ],
+      "capabilities": [
+        "vision",
+        "multi_image_vision"
+      ],
+      "lifecycle": "retired",
+      "systemPrompt": "You are a construction-plan evidence extractor. Treat each image independently. Return only JSON with this schema: {\"rooms\":[{\"source_image\":1,\"label\":\"string\",\"width_ft\":number,\"length_ft\":number,\"area_sq_ft\":number,\"uncertainty\":null}],\"comparison\":\"string\"}. Copy only visible labels and dimensions. Convert inches to fractional feet and compute area deterministically. Do not correct, speculate about, or comment on labels. If unreadable use null and explain in uncertainty.",
+      "taskInstruction": "",
+      "fewShotExamples": [],
+      "promptTemplateVersion": "construction-json-v1",
+      "preprocessing": {
+        "version": "construction-v1",
+        "pdfDPI": 144,
+        "maximumImageDimension": 4096,
+        "imageGrouping": 2,
+        "contrastNormalization": false,
+        "chunkSize": 8000,
+        "chunkOverlap": 400
+      },
+      "generation": {
+        "temperature": 0,
+        "topP": null,
+        "topK": null,
+        "repetitionPenalty": null,
+        "maxOutputTokens": 256,
+        "stopSequences": [],
+        "promptCacheEnabled": true
+      },
+      "adapterID": null,
+      "backendOptions": {
+        "schema_normalizer": "construction-rooms-v1"
+      },
+      "createdAt": "2026-08-09T04:15:56.629761Z"
+    },
+    {
+      "id": "qwen3-vl-30b-construction-json",
+      "version": "1",
+      "baseModelID": "mlx-community/Qwen3-VL-30B-A3B-Instruct-4bit",
+      "taskClasses": [
+        "comparison"
+      ],
+      "capabilities": [
+        "vision",
+        "multi_image_vision"
+      ],
+      "lifecycle": "current",
+      "systemPrompt": "You are a construction-plan evidence extractor. Treat each image independently. Return only JSON with this schema: {\"rooms\":[{\"source_image\":1,\"label\":\"string\",\"width_ft\":number,\"length_ft\":number,\"area_sq_ft\":number,\"uncertainty\":null}],\"comparison\":\"string\"}. Copy only visible labels and dimensions. Convert inches to fractional feet and compute area deterministically. Do not correct, speculate about, or comment on labels. If unreadable use null and explain in uncertainty.",
+      "taskInstruction": "",
+      "fewShotExamples": [],
+      "promptTemplateVersion": "construction-json-v1",
+      "preprocessing": {
+        "version": "construction-v1",
+        "pdfDPI": 144,
+        "maximumImageDimension": 4096,
+        "imageGrouping": 2,
+        "contrastNormalization": false,
+        "chunkSize": 8000,
+        "chunkOverlap": 400
+      },
+      "generation": {
+        "temperature": 0,
+        "topP": null,
+        "topK": null,
+        "repetitionPenalty": null,
+        "maxOutputTokens": 256,
+        "stopSequences": [],
+        "promptCacheEnabled": true
+      },
+      "adapterID": null,
+      "backendOptions": {
+        "schema_normalizer": "construction-rooms-v1"
+      },
+      "createdAt": "2026-08-09T04:15:56.629761Z"
+    }
+  ],
+  "experiments": [
+    {
+      "id": "construction-plan-heldout-v2",
+      "recordedAt": "2026-08-09T04:17:24.957925Z",
+      "taskClass": "comparison",
+      "datasetID": "construction-plan-tracer",
+      "datasetVersion": "2",
+      "split": "held_out",
+      "baselineProfileID": "qwen3-vl-8b-construction-json@1",
+      "candidateProfileID": "qwen3-vl-30b-construction-json@1",
+      "changedVariables": [
+        "base_model"
+      ],
+      "before": {
+        "quality": 0.75,
+        "completeness": 0.75,
+        "hallucinationRate": 0.25,
+        "malformedOutputRate": 0,
+        "totalMilliseconds": 10459.285,
+        "firstTokenMilliseconds": null,
+        "tokensPerSecond": null,
+        "peakMemoryBytes": null,
+        "loadMilliseconds": null,
+        "failures": 0,
+        "examples": 2
+      },
+      "after": {
+        "quality": 1,
+        "completeness": 1,
+        "hallucinationRate": 0,
+        "malformedOutputRate": 0,
+        "totalMilliseconds": 12311.405,
+        "firstTokenMilliseconds": null,
+        "tokensPerSecond": null,
+        "peakMemoryBytes": null,
+        "loadMilliseconds": null,
+        "failures": 0,
+        "examples": 2
+      },
+      "regressions": [],
+      "decision": "promote",
+      "rationale": "30B is exact across development and two independent fresh held-out cases; 8B emits unsupported labels/dimensions/areas.",
+      "provenance": {
+        "results": "V3/profile-experiment-results.json",
+        "prompt_frozen_at": "2026-08-09T04:15:56.629761Z",
+        "local_only": "true",
+        "definition_sha256": "35b16693b8a59d39fa7bdc3625c9f9ce6e42ca5d76b62f6af791b6ef1da99c3f",
+        "evidence_digest": "82de7948c5f49d126716fa626403d6fca0ec64ac13e7cf207eccee35f7439194",
+        "scorer_version": "construction-claims-v1",
+        "scorer_source_sha256": "9062a824b7e824dff470ce008caa4c923804b06870e15a6b44eb793d2113ce85"
+      },
+      "independentCaseCount": 2,
+      "evidenceDigest": "82de7948c5f49d126716fa626403d6fca0ec64ac13e7cf207eccee35f7439194",
+      "scorerVersion": "construction-claims-v1"
+    }
+  ],
+  "schemaVersion": 2,
+  "releaseVersion": 1
+}

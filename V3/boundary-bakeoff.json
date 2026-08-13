@@ -1,0 +1,89 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-08-09T04:50:03Z",
+  "iterations": 30,
+  "host": {
+    "python": "3.13.9"
+  },
+  "live_v1_available": true,
+  "mcp_initialize_ms": 0.111666,
+  "candidates": {
+    "http": {
+      "timing": {
+        "n": 30,
+        "median_ms": 16.9402295,
+        "p95_ms": 43.404709,
+        "min_ms": 14.838417,
+        "max_ms": 43.961459
+      },
+      "transport": "loopback JSON/HTTP",
+      "streaming": "V1 SSE available; workflow response non-streaming",
+      "cancellation": "client disconnect/process cancellation",
+      "permissions": "bearer auth + fixed file roots",
+      "artifact_transport": "path + hash manifest"
+    },
+    "mcp": {
+      "timing": {
+        "n": 30,
+        "median_ms": 16.5300415,
+        "p95_ms": 40.081666,
+        "min_ms": 15.590708,
+        "max_ms": 43.875042
+      },
+      "transport": "JSON-RPC stdio; model access via scoped loopback tool",
+      "streaming": "progress notifications possible but not implemented in spike",
+      "cancellation": "process/task cancellation",
+      "permissions": "tool schema + fixed file roots/endpoint",
+      "artifact_transport": "structuredContent path + hash manifest"
+    },
+    "hybrid": {
+      "timing": {
+        "n": 30,
+        "median_ms": 16.360854500000002,
+        "p95_ms": 37.699292,
+        "min_ms": 15.288541,
+        "max_ms": 43.583
+      },
+      "transport": "MCP workflows + direct V1 HTTP inference",
+      "streaming": "native V1 SSE",
+      "cancellation": "per-boundary cancellation",
+      "permissions": "MCP tool scopes; V1 remains loopback-only",
+      "artifact_transport": "MCP structuredContent; HTTP model payloads"
+    }
+  },
+  "denial_checks": {
+    "http_status": 403,
+    "http_body": {
+      "error": "read_denied",
+      "detail": "read denied outside scope: /private/etc/hosts"
+    },
+    "mcp": {
+      "jsonrpc": "2.0",
+      "id": 161,
+      "error": {
+        "code": -32001,
+        "message": "read denied outside scope: /private/etc/hosts",
+        "data": {
+          "type": "PermissionError"
+        }
+      }
+    }
+  },
+  "restart_isolation": {
+    "http_after_mcp_exit": 200,
+    "v1_after_mcp_exit": 200
+  },
+  "selection": {
+    "winner": "hybrid",
+    "reason": "Preserves proven V1 HTTP/SSE inference while adding typed, discoverable MCP workflow permissions; measured overhead remains small and failures are isolated.",
+    "losers": {
+      "http": "Lowest conceptual count but couples workflow discovery/authorization to a bespoke API and duplicates tool schemas.",
+      "mcp": "Strong tool contract but wrapping all model traffic adds framing/proxy coupling and loses direct V1/SSE compatibility."
+    }
+  },
+  "limitations": [
+    "Transport/control-plane benchmark; model generation latency intentionally excluded.",
+    "MCP progress streaming and cancellation handshake are not productionized.",
+    "Single-host loopback sample; developer effort assessed from spike surface, not team study."
+  ]
+}

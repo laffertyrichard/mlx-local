@@ -1,0 +1,75 @@
+{
+  "captured_at": "2026-08-09T04:03:09.758019+00:00",
+  "git_commit": "7a8d3ad7a29ba2a7027bf821d3b8983fc3a50a6c",
+  "installation": {
+    "app": "~/Applications/MLX Menu.app",
+    "launch_agent": "running",
+    "registry_models": 21,
+    "v1_endpoint": "http://127.0.0.1:8080/v1"
+  },
+  "known_good_multimodal": {
+    "audio_stages_ms": [
+      214,
+      41160
+    ],
+    "code_ms": 12520,
+    "image_ms": 11610,
+    "multi_image_stages_ms": [
+      27900,
+      94160,
+      145180
+    ],
+    "scanned_pdf_stages_ms": [
+      110,
+      11420,
+      75360
+    ],
+    "source": "BENCHMARKS.md V2 final gate"
+  },
+  "limitations": [
+    "Fresh representative multimodal smoke captured in the subsequent V3 experiment record",
+    "Unknown metrics remain null rather than estimated"
+  ],
+  "machine": {
+    "memory_bytes": 68719476736,
+    "model": "Mac16,11",
+    "os": "26.5.2"
+  },
+  "memory_observation": {
+    "app_rss_bytes": 102219776,
+    "note": "RSS is not Metal/unified peak; retained separately from estimates",
+    "v1_worker_rss_bytes": 2522955776
+  },
+  "schema_version": "1.0",
+  "v1": {
+    "completion": {
+      "exact_output": "V3 BASELINE",
+      "latency_ms": 10306,
+      "status": 200,
+      "usage": {
+        "completion_tokens": 5,
+        "prompt_tokens": 19,
+        "total_tokens": 24
+      }
+    },
+    "models_status": 200,
+    "sse": {
+      "done": true,
+      "first_event_ms": 233,
+      "status": 200,
+      "token_fragments": [
+        "STREAM",
+        " OK"
+      ],
+      "total_ms": 247
+    }
+  },
+  "verification": {
+    "debug_build": "pass",
+    "release_build": "pass",
+    "router_checks": {
+      "failed": 0,
+      "passed": 31
+    }
+  }
+}

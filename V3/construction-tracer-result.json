@@ -1,0 +1,78 @@
+{
+  "accepted": true,
+  "actual_model_ids": [
+    "mlx-community/Qwen3-VL-30B-A3B-Instruct-4bit"
+  ],
+  "areas_sq_ft": [
+    91,
+    92.25
+  ],
+  "boundary": "hybrid",
+  "checkpoint_context_digest": "899a9056a22a832229c07c38097553ae9e6214dcc05ab172aab37df6d291f19b",
+  "completed_before_interrupt": 1,
+  "hybrid_boundary_evidence": {
+    "inference_transport": "direct loopback HTTP worker managed by LocalInferenceBackends",
+    "mcp_elapsed_ms": 95.77350000108709,
+    "mcp_initialize": {
+      "name": "mlx-menu-v3-spike",
+      "version": "0.1.0"
+    },
+    "model_control": {
+      "model_count": 21,
+      "provenance": {
+        "endpoint": "127.0.0.1:8080/v1/models",
+        "executor": "mcp-loopback-proxy"
+      }
+    },
+    "no_cloud_fallback": true,
+    "workflow": {
+      "files": [
+        {
+          "bytes": 12917,
+          "name": "heldout-e.png",
+          "sha256": "053dc1708e6f503862dc55b08a99525fb00bfcbe9ea575f1a997c364092adbd6"
+        },
+        {
+          "bytes": 13083,
+          "name": "heldout-f.png",
+          "sha256": "661fa00ac967596bb2efbbc2d6cefd33574d1574e9d4de7c0534d419594f7f26"
+        }
+      ],
+      "manifest_digest": "fb9780701d1235630454103a8c84aa5bf2f1fb759d78c12f0843c184fdf66229",
+      "provenance": {
+        "executor": "mcp-local",
+        "network": "none",
+        "root": "/Users/mccully/projects/prime-agent-claude/V3/fixtures"
+      }
+    }
+  },
+  "interruption_observed": true,
+  "labels": [
+    "LOBBY E",
+    "OFFICE F"
+  ],
+  "models_loaded_after_restart": [],
+  "output": "{\"comparison\":\"The two images display separate rooms with distinct labels and dimensions. The first image shows 'LOBBY E' with dimensions 14'0\\\" x 6'6\\\" (14 ft x 6.5 ft), resulting in an area of 91 sq ft. The second image shows 'OFFICE F' with dimensions 10'3\\\" x 9'0\\\" (10.25 ft x 9 ft), resulting in an area of 92.25 sq ft. The labels and dimensions are clearly visible and distinct.\",\"rooms\":[{\"area_sq_ft\":91,\"label\":\"LOBBY E\",\"length_ft\":6.5,\"source_image\":1,\"uncertainty\":null,\"width_ft\":14},{\"area_sq_ft\":92.25,\"label\":\"OFFICE F\",\"length_ft\":9,\"source_image\":2,\"uncertainty\":null,\"width_ft\":10.25}]}",
+  "profile_digest": "e3701c6b8cd7d6c5c0c65b96522073816f57dfba786f8c98a44302c39bcfa173",
+  "profile_id": "qwen3-vl-30b-construction-json@1",
+  "provenance": {
+    "source_digests": [
+      "053dc1708e6f503862dc55b08a99525fb00bfcbe9ea575f1a997c364092adbd6",
+      "661fa00ac967596bb2efbbc2d6cefd33574d1574e9d4de7c0534d419594f7f26"
+    ],
+    "sources": [
+      "/Users/mccully/projects/prime-agent-claude/V3/fixtures/heldout-e.png",
+      "/Users/mccully/projects/prime-agent-claude/V3/fixtures/heldout-f.png"
+    ],
+    "validator": "construction-json-arithmetic-v1"
+  },
+  "resume_elapsed_ms": 0.31507015228271484,
+  "resumed_stage_reused": true,
+  "schema_version": 1,
+  "uncertainty_preserved": true,
+  "unknown_metrics": [
+    "queue latency",
+    "first-token latency",
+    "exact Metal/KV memory"
+  ]
+}

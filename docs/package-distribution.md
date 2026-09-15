@@ -15,8 +15,17 @@ settings, cached models, logs, and job artifacts are outside the payload.
 `build-package.sh` performs a release build, creates the bundle through
 `build-app.sh`, builds a non-relocatable version-checked component, wraps it in a product
 archive, expands the result, and verifies the architecture/OS gates, identifier,
-resources, plist, and nested code signature. The package has no install scripts and only
-targets the local system domain.
+resources, plist, versions, and nested code signature. The package has no install scripts
+and only targets the local system domain.
+
+`verify-package.sh` requires the payload's `CFBundleShortVersionString.CFBundleVersion` to
+match the versions recorded in `PackageInfo` and the Distribution `pkg-ref`. Set
+`EXPECTED_VERSION` to also pin the release being verified, which rejects a stale or
+renamed package that is internally consistent:
+
+```bash
+EXPECTED_VERSION=3.1.1.5 ./scripts/verify-package.sh dist/MLX-Menu-3.1.1.5.pkg
+```
 
 An unsigned local package is a verification artifact, not a frictionless team release.
 Another Mac will normally block it with Gatekeeper.
@@ -54,7 +63,7 @@ also supplied. It submits the final package with `notarytool --wait` and staples
 accepted ticket. Before sharing:
 
 ```bash
-REQUIRE_SIGNED=1 ./scripts/verify-package.sh dist/MLX-Menu-3.1.1.5.pkg
+REQUIRE_SIGNED=1 EXPECTED_VERSION=3.1.1.5 ./scripts/verify-package.sh dist/MLX-Menu-3.1.1.5.pkg
 spctl --assess --type install --verbose=4 dist/MLX-Menu-3.1.1.5.pkg
 xcrun stapler validate dist/MLX-Menu-3.1.1.5.pkg
 (cd dist && shasum -a 256 -c MLX-Menu-3.1.1.5.pkg.sha256)

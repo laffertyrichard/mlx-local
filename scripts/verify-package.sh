@@ -110,6 +110,36 @@ diff -u "$EXPECTED" "$ACTUAL" || {
 plutil -lint "$APP/Contents/Info.plist" >/dev/null
 [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Contents/Info.plist")" == "local.mccully.mlx-menu" ]]
 [[ "$(/usr/libexec/PlistBuddy -c 'Print :LSMinimumSystemVersion' "$APP/Contents/Info.plist")" == "14.0" ]]
+SHORT_VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP/Contents/Info.plist")"
+BUILD_NUMBER="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP/Contents/Info.plist")"
+PACKAGE_VERSION="${SHORT_VERSION}.${BUILD_NUMBER}"
+python3 - "$DISTRIBUTION" "$PACKAGE_INFO" "$PACKAGE_VERSION" "${EXPECTED_VERSION:-}" <<'PY'
+import sys
+import xml.etree.ElementTree as ET
+
+distribution, package_info, package_version, expected = sys.argv[1:5]
+
+def fail(message: str) -> None:
+    raise SystemExit(message)
+
+if expected and expected != package_version:
+    fail(f"payload is version {package_version}, expected {expected}")
+
+info_version = ET.parse(package_info).getroot().get("version")
+if info_version != package_version:
+    fail(f"PackageInfo version {info_version!r} does not match payload version {package_version!r}")
+
+refs = [
+    ref.get("version")
+    for ref in ET.parse(distribution).getroot().findall("pkg-ref")
+    if ref.get("version") is not None
+]
+if not refs:
+    fail("Distribution pkg-ref is missing a version")
+mismatched = [v for v in refs if v != package_version]
+if mismatched:
+    fail(f"Distribution pkg-ref versions {mismatched} do not match payload version {package_version!r}")
+PY
 [[ "$(lipo -archs "$APP/Contents/MacOS/MLXMenu")" == "arm64" ]] || {
   echo "MLX Menu binary is not a thin arm64 executable." >&2
   exit 1

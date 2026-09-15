@@ -12,3 +12,6 @@ session-logs/
 # IDE user state
 xcuserdata/
 *.xcuserstate
+
+# Local package artifacts
+dist/

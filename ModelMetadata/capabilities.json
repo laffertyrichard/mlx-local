@@ -53,6 +53,56 @@
       "thinking increases latency"
     ]
   },
+  "mlx-community/OvisOCR2-8bit": {
+    "backend": "mlx-vlm",
+    "capabilities": [
+      "OCR",
+      "document_understanding",
+      "structured_extraction"
+    ],
+    "inputModalities": [
+      "text",
+      "image",
+      "document"
+    ],
+    "outputModalities": [
+      "text"
+    ],
+    "strengths": [
+      "top OmniDocBench accuracy",
+      "compact"
+    ],
+    "supportsMultipleImages": false,
+    "supportsStructuredOutput": true,
+    "weaknesses": [
+      "not a general visual reasoner"
+    ]
+  },
+  "mlx-community/PaddleOCR-VL-1.6-4bit": {
+    "backend": "mlx-vlm",
+    "capabilities": [
+      "OCR",
+      "document_understanding",
+      "structured_extraction"
+    ],
+    "inputModalities": [
+      "text",
+      "image",
+      "document"
+    ],
+    "outputModalities": [
+      "text"
+    ],
+    "strengths": [
+      "fastest OCR",
+      "tiny footprint"
+    ],
+    "supportsMultipleImages": false,
+    "supportsStructuredOutput": true,
+    "weaknesses": [
+      "not a general visual reasoner"
+    ]
+  },
   "mlx-community/Qwen2.5-Coder-32B-Instruct-4bit": {
     "backend": "mlx-lm",
     "capabilities": [
@@ -191,6 +241,35 @@
     "supportsStructuredOutput": true,
     "weaknesses": [
       "whole-sheet small text recall"
+    ]
+  },
+  "mlx-community/Qwen3.8-27B-4bit": {
+    "backend": "mlx-lm",
+    "capabilities": [
+      "general_chat",
+      "reasoning",
+      "coding",
+      "long_context",
+      "structured_extraction",
+      "tool_use",
+      "summarization",
+      "comparison"
+    ],
+    "inputModalities": [
+      "text",
+      "code"
+    ],
+    "outputModalities": [
+      "text"
+    ],
+    "strengths": [
+      "strongest local reasoning/agentic coding"
+    ],
+    "supportsStructuredOutput": true,
+    "supportsToolUse": true,
+    "weaknesses": [
+      "dense 27B: ~3x slower decode than A3B MoEs",
+      "thinking increases latency"
     ]
   },
   "mlx-community/dots.ocr-8bit": {

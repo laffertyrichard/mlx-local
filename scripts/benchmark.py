@@ -32,7 +32,7 @@ def run(model: str, capability: str) -> dict:
         cwd=ROOT; output_file=None
     elif backend == 'mlx-vlm':
         image_inputs=[str(ROOT/'Benchmarks/fixtures/room.png') if Path(v).suffix.lower()=='.pdf' else v for v in inputs]
-        cmd=[str(Path.home()/'.local/bin/mlx_vlm.generate'),'--model',str(model_path),'--image',*image_inputs,'--prompt',prompt,'--max-tokens','512','--temperature','0','--verbose']
+        cmd=[str(Path.home()/'.local/bin/mlx_vlm.generate'),'--model',str(model_path),'--image',*image_inputs,'--prompt',prompt,'--max-tokens','512','--temperature','0']  # mlx-vlm's --verbose is store_false: passing it hides the stats
         cwd=ROOT; output_file=None
     elif backend == 'whisper-mlx':
         temp=Path(tempfile.mkdtemp(prefix='mlx-menu-benchmark-')); output_file=temp/'transcript.json'
@@ -43,12 +43,12 @@ def run(model: str, capability: str) -> dict:
     started=time.perf_counter(); proc=subprocess.run(cmd,cwd=cwd,env=env,text=True,capture_output=True); elapsed=(time.perf_counter()-started)*1000
     raw=proc.stdout+'\n'+proc.stderr
     if output_file and output_file.exists(): raw += '\n'+output_file.read_text()
-    lower=raw.lower(); expected=task.get('expected',[]); hits=sum(term.lower() in lower for term in expected)
+    answer=_generated_text(raw,prompt) if backend in {'mlx-lm','mlx-vlm'} else raw
+    lower=answer.lower(); expected=task.get('expected',[]); hits=sum(term.lower() in lower for term in expected)
     quality=hits/max(len(expected),1)
     malformed=0
     if task.get('require_json'):
-        matches=re.findall(r'\{.*?\}',raw,re.S)
-        if not any(_valid_json(x) for x in matches): malformed=1; quality*=0.5
+        if not _contains_json_object(answer): malformed=1; quality*=0.5
     tps=_number(raw,r'Generation:\s*\d+ tokens,\s*([\d.]+) tokens-per-sec')
     memory=_number(raw,r'Peak memory:\s*([\d.]+) GB')
     return {'capability':capability,'quality':quality,'firstTokenMilliseconds':None,
@@ -61,9 +61,18 @@ def run(model: str, capability: str) -> dict:
 def _number(text, pattern):
     m=re.search(pattern,text,re.I); return float(m.group(1)) if m else None
 
-def _valid_json(value):
-    try: json.loads(value); return True
-    except Exception: return False
+def _generated_text(raw, prompt):
+    # Score only the model's answer: mlx-vlm echoes the image paths and templated prompt, and the stats contain numbers.
+    parts=raw.split('='*10)
+    body=parts[1] if len(parts)>2 else raw
+    return body.rsplit(prompt,1)[-1]
+
+def _contains_json_object(text):
+    decoder=json.JSONDecoder()
+    for start in (i for i,c in enumerate(text) if c=='{'):
+        try: decoder.raw_decode(text,start); return True
+        except ValueError: pass
+    return False
 
 def main():
     parser=argparse.ArgumentParser(); parser.add_argument('--model',required=True); parser.add_argument('--capability',choices=TASKS); parser.add_argument('--all',action='store_true'); parser.add_argument('--no-save',action='store_true')

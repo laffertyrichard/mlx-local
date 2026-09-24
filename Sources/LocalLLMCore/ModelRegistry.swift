@@ -158,7 +158,7 @@ public struct ModelRegistryDiscovery: Sendable {
         guard let data = try? Data(contentsOf: snapshot.appending(path: "config.json")),
               let config = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
         let family = (config["model_type"] as? String ?? "unknown").lowercased()
-        if ["bert", "embedding"].contains(where: family.contains) { return nil }
+        if ["bert", "embedding", "_mtp"].contains(where: family.contains) { return nil }
         let architecture = ((config["architectures"] as? [String]) ?? []).joined(separator: " ").lowercased()
         let descriptor = "\(family) \(architecture)"
         let isVision = ["vl", "vision", "ocr", "gemma4", "dots_ocr"].contains(where: descriptor.contains)

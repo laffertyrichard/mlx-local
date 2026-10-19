@@ -1,0 +1,64 @@
+{
+  "synthetic": true,
+  "parent": "synthetic-plan.pdf",
+  "parent_sha256": "9b525f51cfb03e77d778ad09b5ec8d288236f13e8402b557decdcd1d57ebaf81",
+  "generator": "PyMuPDF 1.28.0",
+  "derived": [
+    {
+      "path": "synthetic-scan.png",
+      "frame_id": "SCAN01",
+      "pixel_size": [
+        1224,
+        1584
+      ],
+      "parent_to_child_affine": [
+        2,
+        0,
+        0,
+        2,
+        0,
+        0
+      ]
+    },
+    {
+      "path": "synthetic-scan.pdf",
+      "frame_id": "SCANPDF01",
+      "page_size_points": [
+        612,
+        792
+      ],
+      "parent_to_child_affine": [
+        1,
+        0,
+        0,
+        1,
+        0,
+        0
+      ],
+      "text_extractable": false
+    },
+    {
+      "path": "synthetic-crop.png",
+      "frame_id": "CROP01",
+      "pixel_size": [
+        432,
+        360
+      ],
+      "crop_pdf_points": [
+        100,
+        200,
+        316,
+        380
+      ],
+      "parent_to_child_affine": [
+        2,
+        0,
+        0,
+        2,
+        -200,
+        -400
+      ]
+    }
+  ],
+  "limits": "Synthetic rendered fixtures only; no OCR/VLM inference performed."
+}

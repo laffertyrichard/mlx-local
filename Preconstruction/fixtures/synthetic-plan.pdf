@@ -1,0 +1,44 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>
+endobj
+4 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+5 0 obj
+<< /Length 723 >>
+stream
+0.5 w
+100 412 216 180 re S
+154 484 36 54 re S
+BT /F1 12 Tf 40 740 Td (SYNTHETIC - NOT FOR CONSTRUCTION - A-SYN-1) Tj ET
+BT /F1 12 Tf 140 620 Td (12 ft - finished faces) Tj ET
+BT /F1 12 Tf 330 500 Td (10 ft) Tj ET
+BT /F1 12 Tf 120 560 Td (ROOM ALPHA - NEW FLOOR) Tj ET
+BT /F1 10 Tf 155 505 Td (2 x 3 ft) Tj ET
+BT /F1 10 Tf 100 390 Td (Fixed island: floor finish excluded) Tj ET
+BT /F1 10 Tf 100 370 Td (Dimension basis: 18 PDF points per foot both axes.) Tj ET
+BT /F1 10 Tf 100 350 Td (Existing retained floor elsewhere: 40 SF; reference only.) Tj ET
+BT /F1 10 Tf 100 330 Td (Tile wall height unestablished. Base run not yet traced.) Tj ET
+BT /F1 10 Tf 100 310 Td (R1 wood vs R2 tile selection conflict remains OPEN.) Tj ET
+endstream
+endobj
+xref
+0 6
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000115 00000 n 
+0000000241 00000 n 
+0000000311 00000 n 
+trailer
+<< /Size 6 /Root 1 0 R >>
+startxref
+1084
+%%EOF

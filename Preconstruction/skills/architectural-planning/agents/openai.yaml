@@ -1,0 +1,4 @@
+interface:
+  display_name: "Architectural Planning"
+  short_description: "Coordinate remodel layouts and spatial alternatives"
+  default_prompt: "Use $architectural-planning to compare remodel options across plan, section and elevation."

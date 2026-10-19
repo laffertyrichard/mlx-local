@@ -1,0 +1,312 @@
+{
+  "observed_at_utc": "2026-10-19T15:54:46.902655+00:00",
+  "registry_snapshot_modified_utc": "2026-10-06T15:11:19.735641+00:00",
+  "snapshot_is_not_live_health": true,
+  "model_count": 27,
+  "models": [
+    {
+      "id": "Vontra/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-MLX-6bit",
+      "backend": "mlx-lm",
+      "approximateMemoryBytes": 29537592118,
+      "contextWindow": 262144,
+      "supportsMultipleImages": false,
+      "supportsStructuredOutput": true,
+      "supportsToolUse": false,
+      "health": "healthy",
+      "loadedState": "unloaded"
+    },
+    {
+      "id": "divinetribe/gemma-4-31b-it-abliterated-4bit-mlx",
+      "backend": "mlx-vlm",
+      "approximateMemoryBytes": 19897001962,
+      "contextWindow": 262144,
+      "supportsMultipleImages": true,
+      "supportsStructuredOutput": true,
+      "supportsToolUse": false,
+      "health": "healthy",
+      "loadedState": "unloaded"
+    },
+    {
+      "id": "mlx-community/DeepSeek-R1-Distill-Llama-70B-4bit",
+      "backend": "mlx-lm",
+      "approximateMemoryBytes": 45661891357,
+      "contextWindow": 131072,
+      "supportsMultipleImages": false,
+      "supportsStructuredOutput": true,
+      "supportsToolUse": false,
+      "health": "healthy",
+      "loadedState": "unloaded"
+    },
+    {
+      "id": "mlx-community/DeepSeek-R1-Distill-Qwen-32B-4bit",
+      "backend": "mlx-lm",
+      "approximateMemoryBytes": 21209513141,
+      "contextWindow": 131072,
+      "supportsMultipleImages": false,
+      "supportsStructuredOutput": true,
+      "supportsToolUse": false,
+      "health": "healthy",
+      "loadedState": "unloaded"
+    },
+    {
+      "id": "mlx-community/Huihui-Qwen3.6-27B-abliterated-4.5bit-msq",
+      "backend": "mlx-lm",
+      "approximateMemoryBytes": 19519470851,
+      "contextWindow": 262144,
+      "supportsMultipleImages": false,
+      "supportsStructuredOutput": true,
+      "supportsToolUse": false,
+      "health": "healthy",
+      "loadedState": "unloaded"
+    },
+    {
+      "id": "mlx-community/Kimi-Linear-48B-A3B-Instruct-4bit",
+      "backend": "mlx-lm",
+      "approximateMemoryBytes": 31790869998,
+      "contextWindow": 32768,
+      "supportsMultipleImages": false,
+      "supportsStructuredOutput": true,
+      "supportsToolUse": false,
+      "health": "healthy",
+      "loadedState": "unloaded"
+    },
+    {
+      "id": "mlx-community/Kimi-VL-A3B-Thinking-2506-6bit",
+      "backend": "mlx-vlm",
+      "approximateMemoryBytes": 15931763401,
+      "contextWindow": 131072,
+      "supportsMultipleImages": true,
+      "supportsStructuredOutput": true,
+      "supportsToolUse": false,
+      "health": "healthy",
+      "loadedState": "unloaded"
+    },
+    {
+      "id": "mlx-community/Llama-3.3-70B-Instruct-4bit",
+      "backend": "mlx-lm",
+      "approximateMemoryBytes": 45661912545,
+      "contextWindow": 131072,
+      "supportsMultipleImages": false,
+      "supportsStructuredOutput": true,
+      "supportsToolUse": false,
+      "health": "healthy",
+      "loadedState": "unloaded"
+    },
+    {
+      "id": "mlx-community/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-4bit",
+      "backend": "mlx-lm",
+      "approximateMemoryBytes": 20565450000,
+      "contextWindow": 262144,
+      "supportsMultipleImages": false,
+      "supportsStructuredOutput": true,
+      "supportsToolUse": true,
+      "health": "healthy",
+      "loadedState": "unloaded"
+    },
+    {
+      "id": "mlx-community/OvisOCR2-8bit",
+      "backend": "mlx-lm",
+      "approximateMemoryBytes": 1182177816,
+      "contextWindow": 262144,
+      "supportsMultipleImages": false,
+      "supportsStructuredOutput": true,
+      "supportsToolUse": false,
+      "health": "healthy",
+      "loadedState": "unloaded"
+    },
+    {
+      "id": "mlx-community/PaddleOCR-VL-1.6-4bit",
+      "backend": "mlx-vlm",
+      "approximateMemoryBytes": 822265174,
+      "contextWindow": 131072,
+      "supportsMultipleImages": false,
+      "supportsStructuredOutput": true,
+      "supportsToolUse": false,
+      "health": "healthy",
+      "loadedState": "unloaded"
+    },
+    {
+      "id": "mlx-community/QwQ-32B-4bit",
+      "backend": "mlx-lm",
+      "approximateMemoryBytes": 21214628581,
+      "contextWindow": 131072,
+      "supportsMultipleImages": false,
+      "supportsStructuredOutput": true,
+      "supportsToolUse": false,
+      "health": "healthy",
+      "loadedState": "unloaded"
+    },
+    {
+      "id": "mlx-community/Qwen2.5-Coder-32B-Instruct-4bit",
+      "backend": "mlx-lm",
+      "approximateMemoryBytes": 21209577909,
+      "contextWindow": 32768,
+      "supportsMultipleImages": false,
+      "supportsStructuredOutput": true,
+      "supportsToolUse": true,
+      "health": "healthy",
+      "loadedState": "unloaded"
+    },
+    {
+      "id": "mlx-community/Qwen3-30B-A3B-Instruct-2507-4bit",
+      "backend": "mlx-lm",
+      "approximateMemoryBytes": 19776647521,
+      "contextWindow": 262144,
+      "supportsMultipleImages": false,
+      "supportsStructuredOutput": true,
+      "supportsToolUse": false,
+      "health": "healthy",
+      "loadedState": "unloaded"
+    },
+    {
+      "id": "mlx-community/Qwen3-32B-4bit",
+      "backend": "mlx-lm",
+      "approximateMemoryBytes": 21212755625,
+      "contextWindow": 40960,
+      "supportsMultipleImages": false,
+      "supportsStructuredOutput": true,
+      "supportsToolUse": false,
+      "health": "healthy",
+      "loadedState": "unloaded"
+    },
+    {
+      "id": "mlx-community/Qwen3-ASR-0.6B-8bit",
+      "backend": "whisper-mlx",
+      "approximateMemoryBytes": 2081499999,
+      "contextWindow": 32768,
+      "supportsMultipleImages": false,
+      "supportsStructuredOutput": true,
+      "supportsToolUse": false,
+      "health": "healthy",
+      "loadedState": "unloaded"
+    },
+    {
+      "id": "mlx-community/Qwen3-Coder-30B-A3B-Instruct-4bit",
+      "backend": "mlx-lm",
+      "approximateMemoryBytes": 19776683787,
+      "contextWindow": 262144,
+      "supportsMultipleImages": false,
+      "supportsStructuredOutput": true,
+      "supportsToolUse": true,
+      "health": "healthy",
+      "loadedState": "unloaded"
+    },
+    {
+      "id": "mlx-community/Qwen3-VL-30B-A3B-Instruct-4bit",
+      "backend": "mlx-vlm",
+      "approximateMemoryBytes": 22505500000,
+      "contextWindow": 262144,
+      "supportsMultipleImages": true,
+      "supportsStructuredOutput": true,
+      "supportsToolUse": false,
+      "health": "healthy",
+      "loadedState": "unloaded"
+    },
+    {
+      "id": "mlx-community/Qwen3-VL-8B-Instruct-4bit",
+      "backend": "mlx-vlm",
+      "approximateMemoryBytes": 8302999999,
+      "contextWindow": 262144,
+      "supportsMultipleImages": true,
+      "supportsStructuredOutput": true,
+      "supportsToolUse": false,
+      "health": "healthy",
+      "loadedState": "unloaded"
+    },
+    {
+      "id": "mlx-community/Qwen3.6-27B-4bit",
+      "backend": "mlx-lm",
+      "approximateMemoryBytes": 18493713573,
+      "contextWindow": 262144,
+      "supportsMultipleImages": false,
+      "supportsStructuredOutput": true,
+      "supportsToolUse": false,
+      "health": "healthy",
+      "loadedState": "unloaded"
+    },
+    {
+      "id": "mlx-community/Qwen3.6-35B-A3B-4bit",
+      "backend": "mlx-lm",
+      "approximateMemoryBytes": 23493544652,
+      "contextWindow": 262144,
+      "supportsMultipleImages": false,
+      "supportsStructuredOutput": true,
+      "supportsToolUse": false,
+      "health": "healthy",
+      "loadedState": "unloaded"
+    },
+    {
+      "id": "mlx-community/Qwen3.8-27B-4bit",
+      "backend": "mlx-lm",
+      "approximateMemoryBytes": 18493714572,
+      "contextWindow": 262144,
+      "supportsMultipleImages": false,
+      "supportsStructuredOutput": true,
+      "supportsToolUse": false,
+      "health": "healthy",
+      "loadedState": "unloaded"
+    },
+    {
+      "id": "mlx-community/Qwen3.8-27B-MTP-4bit",
+      "backend": "mlx-lm",
+      "approximateMemoryBytes": 512000000,
+      "contextWindow": 262144,
+      "supportsMultipleImages": false,
+      "supportsStructuredOutput": true,
+      "supportsToolUse": false,
+      "health": "healthy",
+      "loadedState": "unloaded"
+    },
+    {
+      "id": "mlx-community/dots.ocr-8bit",
+      "backend": "mlx-vlm",
+      "approximateMemoryBytes": 6922999999,
+      "contextWindow": 131072,
+      "supportsMultipleImages": false,
+      "supportsStructuredOutput": true,
+      "supportsToolUse": false,
+      "health": "healthy",
+      "loadedState": "unloaded"
+    },
+    {
+      "id": "mlx-community/gemma-4-26b-a4b-it-4bit",
+      "backend": "mlx-vlm",
+      "approximateMemoryBytes": 35630037068,
+      "contextWindow": 262144,
+      "supportsMultipleImages": true,
+      "supportsStructuredOutput": true,
+      "supportsToolUse": false,
+      "health": "healthy",
+      "loadedState": "unloaded"
+    },
+    {
+      "id": "mlx-community/gemma-4-31B-it-qat-4bit",
+      "backend": "mlx-vlm",
+      "approximateMemoryBytes": 33176300356,
+      "contextWindow": 262144,
+      "supportsMultipleImages": true,
+      "supportsStructuredOutput": true,
+      "supportsToolUse": false,
+      "health": "healthy",
+      "loadedState": "unloaded"
+    },
+    {
+      "id": "mlx-community/olmOCR-7B-0725-8bit",
+      "backend": "mlx-vlm",
+      "approximateMemoryBytes": 12270500000,
+      "contextWindow": 128000,
+      "supportsMultipleImages": false,
+      "supportsStructuredOutput": true,
+      "supportsToolUse": false,
+      "health": "healthy",
+      "loadedState": "unloaded"
+    }
+  ],
+  "checks_not_run": [
+    "inference",
+    "benchmark",
+    "server start/stop",
+    "model loading",
+    "current memory pressure (sysctl permission denied)"
+  ]
+}

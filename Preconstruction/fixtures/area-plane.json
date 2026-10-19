@@ -1,0 +1,71 @@
+{
+  "source": {
+    "file": "synthetic-plan.pdf",
+    "sheet": "A-SYN-1",
+    "page_index": 0,
+    "revision": "SYN-R1"
+  },
+  "coordinate_system": "PDF points; top-left origin; original unrotated page",
+  "length_unit": "ft",
+  "area_unit": "SF",
+  "scale": 18,
+  "scale_note": "X:216 points/12 ft; Y:180 points/10 ft; finished-face synthetic checks",
+  "scope": "Room Alpha floor candidate only; fixed island excluded; material conflict remains open",
+  "zones": [
+    {
+      "id": "Z01",
+      "name": "Room Alpha",
+      "finish": "UNRESOLVED Q01"
+    }
+  ],
+  "polys": [
+    {
+      "id": "G01",
+      "zone": "Z01",
+      "sign": 1,
+      "pts": [
+        [
+          100,
+          200
+        ],
+        [
+          316,
+          200
+        ],
+        [
+          316,
+          380
+        ],
+        [
+          100,
+          380
+        ]
+      ],
+      "note": "Finished-face gross floor"
+    },
+    {
+      "id": "D01",
+      "zone": "Z01",
+      "sign": -1,
+      "pts": [
+        [
+          154,
+          254
+        ],
+        [
+          190,
+          254
+        ],
+        [
+          190,
+          308
+        ],
+        [
+          154,
+          308
+        ]
+      ],
+      "note": "Fixed 2 by 3 ft island deduction"
+    }
+  ]
+}

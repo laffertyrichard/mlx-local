@@ -1,0 +1,4 @@
+interface:
+  display_name: "Bid package review"
+  short_description: "Review Buildertrend bids, vendors, and attachments"
+  default_prompt: "Use $bid-package-review to review this Buildertrend bid package, vendor responses, and attached bid documents."

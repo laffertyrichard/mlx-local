@@ -268,7 +268,7 @@ struct PreconstructionProjectTests {
         let workspace = try Workspace()
         defer { workspace.cleanUp() }
         let (project, revision, checkpoint) = try savedRevision(workspace)
-        #expect(try workspace.store.resume(from: checkpoint, in: project) == revision)
+        #expect(try workspace.store.resume(from: checkpoint, in: project).0 == revision)
         #expect(throws: PreconProjectError.alreadyExists("R1.json")) { try workspace.store.saveRevision(revision, in: project) }
     }
 
@@ -317,5 +317,70 @@ struct PreconstructionProjectTests {
         revision.quantities = [quantity]
         _ = try workspace.store.saveRevision(revision, in: project)
         return (project, revision, try workspace.store.saveCheckpoint(for: revision, in: project))
+    }
+}
+
+@Suite("Preconstruction traced measurements")
+struct PreconstructionMeasurementTests {
+    private func traced(yCoordinateLength: Double = 180) throws -> TakeoffMeasurements {
+        let plane = try fixture(AreaPlane.self, "area-plane.json")
+        let extra = try fixture(ExtraGeometry.self, "extra-geometry.json")
+        var measurements = TakeoffMeasurements(source: SourceRecord(id: "S01", path: "sources/x/synthetic-plan.pdf", sha256: "",
+                                                                    revision: "SYN-R1", role: .proposed, pageIndex: 0, sheet: "A-SYN-1"))
+        measurements.calibrationChecks = [
+            CalibrationCheck(axis: .x, coordinateLength: 216, realLength: 12, datum: "x witness"),
+            CalibrationCheck(axis: .y, coordinateLength: yCoordinateLength, realLength: 10, datum: "y witness"),
+        ]
+        measurements.polys = plane.polys
+        measurements.routes = extra.routes.map { .init(id: $0.id, pts: $0.pts, closed: $0.closed) }
+        measurements.counts = extra.counts.enumerated().map { .init(id: "C\($0.offset)", physicalItemId: $0.element.physicalItemId, pt: [0, 0]) }
+        return measurements
+    }
+
+    @Test("A05/A12/A13: traced geometry yields 114 SF, 22 LF and 2 EA under a candidate calibration")
+    func tracedQuantities() throws {
+        let measurements = try traced()
+        #expect(measurements.calibration.status == .candidate)
+        #expect(measurements.quantities().map(\.value) == [114, 22, 2])
+        #expect(measurements.plane?.zones.map(\.id) == ["Z01"])
+        #expect(measurements.checks().map(\.status) == [.passed, .unavailable], "topology is recorded as unavailable, never passed")
+    }
+
+    @Test("A09: a calibration conflict withholds every scaled value instead of averaging")
+    func conflictWithholdsValues() throws {
+        let measurements = try traced(yCoordinateLength: 200)
+        #expect(measurements.calibration.status == .conflict)
+        #expect(measurements.plane == nil)
+        let values = measurements.quantities().map(\.value)
+        #expect(values[0] == nil && values[1] == nil)
+        #expect(values[2] == 2, "counts do not depend on scale")
+    }
+
+    @Test("reviewing calibration only promotes a candidate, never a conflict")
+    func reviewOnlyPromotesCandidate() throws {
+        var conflict = try traced(yCoordinateLength: 200)
+        conflict.calibrationReviewed = true
+        #expect(conflict.calibration.status == .conflict)
+        var candidate = try traced()
+        candidate.calibrationReviewed = true
+        #expect(candidate.calibration.status == .reviewed)
+    }
+
+    @Test("A24: editing a saved measurement file rejects the checkpoint")
+    func staleMeasurement() throws {
+        let workspace = try Workspace()
+        defer { workspace.cleanUp() }
+        let project = try workspace.project()
+        let measurements = try traced()
+        let path = try workspace.store.saveMeasurement(try PreconJSON.encoder.encode(measurements.plane), named: "R1-plane.json", in: project)
+        var revision = PreconRevision(revisionId: "R1")
+        revision.quantities = measurements.quantities()
+        _ = try workspace.store.saveRevision(revision, in: project)
+        let checkpoint = try workspace.store.saveCheckpoint(for: revision, in: project, measurements: [path])
+        #expect(try workspace.store.resume(from: checkpoint, in: project).1.measurementDigests.keys.sorted() == [path])
+        try Data("{}".utf8).write(to: project.appending(path: path))
+        #expect(throws: PreconProjectError.staleCheckpoint(["measurement \(path) changed"])) {
+            try workspace.store.resume(from: checkpoint, in: project)
+        }
     }
 }

@@ -31,6 +31,7 @@ public struct ProjectCheckpoint: Codable, Equatable, Sendable {
     public var revisionId: String
     public var revisionSha256: String
     public var sourceDigests: [String: String]
+    public var measurementDigests: [String: String]
     public var createdAt: Date
 }
 
@@ -90,8 +91,17 @@ public struct PreconProjectStore: Sendable {
                                  to: project.appending(path: "revisions/\(revision.revisionId).json"))
     }
 
-    /// Binds the saved revision bytes (calibration included) and every source hash.
-    public func saveCheckpoint(for revision: PreconRevision, in project: URL, at date: Date = Date()) throws -> URL {
+    /// Writes a new measurement file (plane or traced geometry); returns its project-relative path.
+    public func saveMeasurement(_ data: Data, named name: String, in project: URL) throws -> String {
+        try Self.requireSafeName(name)
+        let project = try contained(project)
+        _ = try Self.writeNew(data, to: project.appending(path: "measurements/\(name)"))
+        return "measurements/\(name)"
+    }
+
+    /// Binds the saved revision bytes (calibration included), every source hash and the listed measurement files.
+    public func saveCheckpoint(for revision: PreconRevision, in project: URL, measurements: [String] = [],
+                               at date: Date = Date()) throws -> URL {
         let project = try contained(project)
         let revisionURL = project.appending(path: "revisions/\(revision.revisionId).json")
         guard try PreconJSON.decoder.decode(PreconRevision.self, from: Data(contentsOf: revisionURL)) == revision else {
@@ -104,16 +114,18 @@ public struct PreconProjectStore: Sendable {
             }
             sources[source.path] = source.sha256
         }
+        var measured: [String: String] = [:]
+        for path in measurements { measured[path] = try StableDigest.file(try contained(project.appending(path: path))) }
         let checkpoint = ProjectCheckpoint(schemaVersion: revision.schemaVersion, revisionId: revision.revisionId,
                                            revisionSha256: try StableDigest.file(revisionURL), sourceDigests: sources,
-                                           createdAt: date)
+                                           measurementDigests: measured, createdAt: date)
         let stamp = Int(date.timeIntervalSince1970 * 1000)
         return try Self.writeNew(try PreconJSON.encoder.encode(checkpoint),
                                  to: project.appending(path: "checkpoints/\(revision.revisionId)-\(stamp).json"))
     }
 
     /// Rejects corrupt checkpoints and any changed schema, revision or source bytes; never silently reuses stale work.
-    public func resume(from checkpointURL: URL, in project: URL) throws -> PreconRevision {
+    public func resume(from checkpointURL: URL, in project: URL) throws -> (PreconRevision, ProjectCheckpoint) {
         let project = try contained(project)
         guard let checkpoint = try? PreconJSON.decoder.decode(ProjectCheckpoint.self,
                                                               from: Data(contentsOf: try contained(checkpointURL))) else {
@@ -127,8 +139,12 @@ public struct PreconProjectStore: Sendable {
             let current = try? StableDigest.file(try contained(project.appending(path: path)))
             if current != digest { stale.append("source \(path) changed") }
         }
+        for (path, digest) in checkpoint.measurementDigests.sorted(by: { $0.key < $1.key }) {
+            let current = try? StableDigest.file(try contained(project.appending(path: path)))
+            if current != digest { stale.append("measurement \(path) changed") }
+        }
         guard stale.isEmpty else { throw PreconProjectError.staleCheckpoint(stale) }
-        return try PreconJSON.decoder.decode(PreconRevision.self, from: Data(contentsOf: revisionURL))
+        return (try PreconJSON.decoder.decode(PreconRevision.self, from: Data(contentsOf: revisionURL)), checkpoint)
     }
 
     private func contained(_ url: URL) throws -> URL {

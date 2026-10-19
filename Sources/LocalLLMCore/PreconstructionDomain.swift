@@ -57,6 +57,10 @@ public struct CalibrationCheck: Codable, Equatable, Sendable {
     public var realLength: Double
     public var datum: String
 
+    public init(axis: Axis, coordinateLength: Double, realLength: Double, datum: String) {
+        self.axis = axis; self.coordinateLength = coordinateLength; self.realLength = realLength; self.datum = datum
+    }
+
     public var scale: Double { coordinateLength / realLength }
 }
 
@@ -137,6 +141,10 @@ public struct ApprovalRecord: Codable, Equatable, Sendable {
     @Nullable public var snapshotSha256: String?
     @Nullable public var actor: String?
     @Nullable public var at: String?
+
+    public init(gate: Gate, status: Status, snapshotSha256: String?, actor: String?, at: String?) {
+        self.gate = gate; self.status = status; self.snapshotSha256 = snapshotSha256; self.actor = actor; self.at = at
+    }
 }
 
 public struct PreconRevision: Codable, Equatable, Sendable {
@@ -179,10 +187,20 @@ public struct AreaPlane: Codable, Equatable, Sendable {
         public var sign: Int
         public var pts: [[Double]]
         public var note: String?
+
+        public init(id: String, zone: String, sign: Int, pts: [[Double]], note: String? = nil) {
+            self.id = id; self.zone = zone; self.sign = sign; self.pts = pts; self.note = note
+        }
+    }
+    public struct Zone: Codable, Equatable, Sendable {
+        public var id: String
+        public var name: String
+        public var finish: String?
     }
     public var source: Source
     public var lengthUnit: String
     public var areaUnit: String
     public var scale: Double
+    public var zones: [Zone]
     public var polys: [Polygon]
 }

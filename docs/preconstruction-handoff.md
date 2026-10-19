@@ -40,12 +40,14 @@ Roadmap phases 0-2 are implemented. Phases 3-8 are not started.
   - Template lookup: `Bundle.main.resourceURL/preconstruction-template`, then `<cwd>/Preconstruction/templates/project`.
   - Each edit starts a new unsaved revision `Rn` and marks earlier approvals stale.
   - Approve sets the calibration to reviewed first, then binds `reviewed_geometry` to the snapshot digest.
-  - Save writes `measurements/Rn-measurements.json`, `Rn-plane.json` (helper schema), `revisions/Rn.json` and a checkpoint.
+  - One draft per source page (page picker). Save writes `measurements/Rn-<sourceId>-measurements.json` and `Rn-<sourceId>-plane.json` (helper schema) for every traced page, then `revisions/Rn.json` and a checkpoint.
+  - Taps and overlays go through `PageFrame` (`PreconstructionPageFrame.swift`), so rotated pages and offset media boxes map to the unrotated top-left frame.
+  - A stale newest checkpoint shows a recovery view: "Open Last Valid Checkpoint" or "Start New Revision".
 - `MLXMenuApp.swift`: two additions only, the `Window("Preconstruction Takeoff", id: "takeoff")` scene and the "Open Takeoff" button in `MenuPanel`.
 
 ## Evidence
 
-- `nice -n 10 swift test -j 4`: 37/37 pass. That is the 12 tests that existed before this work plus 25 preconstruction tests. Test names carry acceptance IDs (A01-A03, A05-A09, A12-A16, A24, A39, A40).
+- `nice -n 10 swift test -j 4`: 39/39 pass (12 pre-existing plus 27 preconstruction; the A10 page-frame test runs 4 rotations). Test names carry acceptance IDs (A01-A03, A05-A09, A12-A16, A24, A39, A40).
 - Package checks from `Preconstruction/`, all passing:
   - `python3 -B tests/test_contracts.py`: 10
   - `python3 -B skills/plan-area-takeoff/scripts/test_geometry.py`: 10
@@ -54,21 +56,24 @@ Roadmap phases 0-2 are implemented. Phases 3-8 are not started.
   - Swift-encoded revision validated against `revision.schema.json` with Anaconda jsonschema.
   - Swift-written plane run through `geometry.py`: net 114.0.
 - Not re-run: `test_cad.py`, `tests/test_optional_checks.py` (they need `/opt/homebrew/anaconda3/bin/python`).
-- **The UI has never been exercised by hand.** It compiles; no click-through has been done.
+- The UI was smoke-tested in session 2 (see below). Saved revisions from that run, with 2 sources and per-page IDs, validate against `revision.schema.json` (Anaconda jsonschema).
+
+## Session 2 (2026-10-19, uncommitted)
+
+- **Smoke test done** on the debug build with `PRECONSTRUCTION_WORKSPACE` set to a scratch root. Steps: create project, import, Cal X 216 pt = 12 ft, Cal Y 180 pt = 10 ft, trace the room and the island (114 SF), approve, save, then reopen with approval intact. `geometry.py` on the saved plane gave net 114.0. After an R2 label edit and save, the R2 plane file was edited; reopen was refused and listed the changed file.
+  - The unbundled debug binary runs with activation policy "prohibited", so it never becomes the active app. Synthetic keystrokes can't reach its open panel, so the user did the PDF imports by hand. Clicks were driven by a scratch AX/CGEvent helper; that helper is not in the repo.
+- **Bugs fixed:** in the empty state the project bar floated mid-window. Tool captions wrapped into a tall toolbar row, shifting the canvas mid-trace. `nextID` counted `G01` when numbering deductions (gave `D02`).
+- **Limitations fixed:**
+  - Page picker. One draft per source page, and measurement and plane files are `Rn-<sourceId>-…`. Quantity and check IDs end in the source ID. One approval covers every traced page.
+  - Rotation and media-box origin. `PageFrame` in `PreconstructionPageFrame.swift`, with a render round-trip test at 0, 90, 180 and 270 degrees on an offset media box.
+  - Template bundled at `Resources/preconstruction-template` via `ditto --noextattr`, and listed in the `verify-package.sh` allowlist. Checked on a throwaway signed bundle only; `build-package.sh` has not been run.
+  - Stale-checkpoint recovery. It lists the reasons and offers "Open Last Valid Checkpoint" or "Start New Revision". Neither changes any file.
+- Tests: 39/39 (`nice -n 10 swift test -j 4`). Package checks still pass.
 
 ## Next steps (in order)
 
-1. **Manual UI smoke test**, if the user agrees to launch the app. Use `Preconstruction/fixtures/synthetic-plan.pdf`:
-   - Cal X: 216 pt = 12 ft. Cal Y: 180 pt = 10 ft.
-   - Trace the room and the island deduction. Expect 114 SF.
-   - Approve, save, reopen.
-   - Edit the plane file and confirm reopening is refused.
-2. **Limitations to fix if wanted:**
-   - Only page 1 is traceable; it needs a page picker and per-page measurement files.
-   - Rotated pages and non-zero media-box origins trace offset.
-   - The template isn't bundled into the packaged app. Bundling needs a `scripts/build-app.sh` install line and the exact file list in `scripts/verify-package.sh` (around lines 94-99).
-   - No recovery UI when a checkpoint is stale.
-   - Same-sign overlap needs a Boolean polygon engine; until then topology must stay `unavailable`.
+1. Run `scripts/build-package.sh` and `verify-package.sh` (release build; ask first). Then confirm that Create works from the installed app with no repo cwd.
+2. Same-sign overlap needs a Boolean polygon engine; until then topology must stay `unavailable`.
 3. **Phase 3** (assisted interpretation: native PDF text, then sequential crop OCR, then focused vision candidates):
    - Use mock runtimes first.
    - Any real model evaluation needs explicit user authorization and a quiet window, because the Mac runs a trade-pricing workload.

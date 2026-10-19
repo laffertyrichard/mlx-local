@@ -1,4 +1,6 @@
+import AppKit
 import Foundation
+import PDFKit
 import Testing
 @testable import LocalLLMCore
 
@@ -382,5 +384,73 @@ struct PreconstructionMeasurementTests {
         #expect(throws: PreconProjectError.staleCheckpoint(["measurement \(path) changed"])) {
             try workspace.store.resume(from: checkpoint, in: project)
         }
+    }
+
+    @Test("two traced pages keep distinct quantity and check IDs and per-page measurement files")
+    func perPageDrafts() throws {
+        let first = try traced()
+        var second = try traced()
+        second.source.id = "S01-P1"
+        second.source.pageIndex = 1
+        let quantities = [first, second].flatMap { $0.quantities() }
+        let checks = [first, second].flatMap { $0.checks() }
+        #expect(Set(quantities.map(\.id)).count == quantities.count && quantities.count == 6)
+        #expect(Set(checks.map(\.id)).count == checks.count)
+        #expect(quantities.map(\.value) == [114, 22, 2, 114, 22, 2])
+
+        let workspace = try Workspace()
+        defer { workspace.cleanUp() }
+        let project = try workspace.project()
+        let paths = try [first, second].map {
+            try workspace.store.saveMeasurement(try PreconJSON.encoder.encode($0), named: "R12-\($0.source.id)-measurements.json", in: project)
+        }
+        #expect(paths == ["measurements/R12-S01-measurements.json", "measurements/R12-S01-P1-measurements.json"])
+    }
+}
+
+@Suite("Preconstruction page frame")
+struct PreconstructionPageFrameTests {
+    /// One-page PDF with an offset media box and an 8 pt black mark centred at `mark` in the stored top-left frame.
+    private func markedPage(rotation: Int, mark: [Double], in directory: URL) throws -> PDFDocument {
+        var box = CGRect(x: 50, y: 100, width: 612, height: 792)
+        let raw = directory.appending(path: "raw.pdf")
+        let context = try #require(CGContext(raw as CFURL, mediaBox: &box, nil))
+        context.beginPDFPage(nil)
+        context.setFillColor(CGColor(gray: 0, alpha: 1))
+        context.fill(CGRect(x: box.minX + mark[0] - 4, y: box.maxY - mark[1] - 4, width: 8, height: 8))
+        context.endPDFPage()
+        context.closePDF()
+        let document = try #require(PDFDocument(url: raw))
+        document.page(at: 0)?.rotation = rotation
+        let rotated = directory.appending(path: "rotated-\(rotation).pdf")
+        #expect(document.write(to: rotated))
+        return try #require(PDFDocument(url: rotated))
+    }
+
+    @Test("A10: rotated, offset media box maps a rendered mark back to its stored point", arguments: [0, 90, 180, 270])
+    func renderedMarkRoundTrips(rotation: Int) throws {
+        let directory = FileManager.default.temporaryDirectory.appending(path: "PageFrame-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let mark = [100.0, 200.0]
+        let document = try markedPage(rotation: rotation, mark: mark, in: directory)
+        let page = try #require(document.page(at: 0))
+        let frame = PageFrame(page)
+        #expect(frame.rotation == rotation)
+        #expect(frame.toPage(frame.toDisplay(mark)) == mark)
+
+        let scale = 1.5
+        let image = PageFrame.render(page, scale: scale)
+        let rep = try #require(image.tiffRepresentation.flatMap(NSBitmapImageRep.init(data:)))
+        let pixelsPerPoint = Double(rep.pixelsWide) / image.size.width
+        #expect(abs(image.size.width - frame.displaySize.width * scale) < 1 && abs(image.size.height - frame.displaySize.height * scale) < 1)
+        var (sx, sy, n) = (0.0, 0.0, 0.0)
+        for y in 0..<rep.pixelsHigh { for x in 0..<rep.pixelsWide where (rep.colorAt(x: x, y: y)?.brightnessComponent ?? 1) < 0.5 {
+            sx += Double(x) + 0.5; sy += Double(y) + 0.5; n += 1
+        } }
+        #expect(n > 0)
+        let display = [sx / n / pixelsPerPoint / scale, sy / n / pixelsPerPoint / scale]
+        let found = frame.toPage(display)
+        #expect(abs(found[0] - mark[0]) < 1 && abs(found[1] - mark[1]) < 1, "rotation \(rotation): display \(display) -> \(found)")
     }
 }

@@ -19,8 +19,12 @@ final class TakeoffController: ObservableObject {
     @Published private(set) var projects: [String] = []
     @Published private(set) var project: URL?
     @Published private(set) var revision = PreconRevision(revisionId: "R1")
-    @Published private(set) var measurements: TakeoffMeasurements?
+    /// One traced draft per source page, keyed by source ID; `measurements` is the selected page's draft.
+    @Published private(set) var drafts: [String: TakeoffMeasurements] = [:]
+    @Published private(set) var currentSource: String?
     @Published private(set) var pageImage: NSImage?
+    @Published private(set) var pageFrame: PageFrame?
+    @Published private(set) var staleReasons: [String] = []
     @Published private(set) var dirty = false
     @Published var tool: Tool = .area
     @Published var pending: [[Double]] = []
@@ -33,6 +37,17 @@ final class TakeoffController: ObservableObject {
                           URL(filePath: FileManager.default.currentDirectoryPath).appending(path: "Preconstruction/templates/project")]
         .compactMap { $0 }.first { FileManager.default.fileExists(atPath: $0.path) }
     private var store: PreconProjectStore?
+
+    private(set) var measurements: TakeoffMeasurements? {
+        get { currentSource.flatMap { drafts[$0] } }
+        set { if let currentSource { drafts[currentSource] = newValue } }
+    }
+
+    /// Pages with anything traced; only these reach the revision, measurement files and approval.
+    var tracedDrafts: [TakeoffMeasurements] {
+        drafts.values.filter { !$0.calibrationChecks.isEmpty || !$0.polys.isEmpty || !$0.routes.isEmpty || !$0.counts.isEmpty }
+            .sorted { $0.source.id < $1.source.id }
+    }
 
     init() {
         let configured = ProcessInfo.processInfo.environment["PRECONSTRUCTION_WORKSPACE"]
@@ -80,21 +95,58 @@ final class TakeoffController: ObservableObject {
         guard let store else { return }
         let url = store.root.appending(path: name, directoryHint: .isDirectory)
         project = url
-        revision = PreconRevision(revisionId: nextRevisionID(in: url))
-        measurements = nil
+        reset(in: url)
+        guard let checkpoint = checkpoints(in: url).first else { message = "New project. Import a PDF to begin."; return }
+        do {
+            try load(checkpoint, in: url)
+            message = "Reopened \(revision.revisionId) from verified checkpoint."
+        } catch PreconProjectError.staleCheckpoint(let reasons) {
+            staleReasons = reasons
+            message = "Newest checkpoint is stale; nothing was loaded and no file was changed."
+        } catch {
+            message = error.localizedDescription
+        }
+    }
+
+    /// Recovery: the newest checkpoint that still verifies. Newer stale files are left in place for inspection.
+    func openLastValidCheckpoint() {
+        guard let project else { return }
+        for checkpoint in checkpoints(in: project) {
+            reset(in: project)
+            guard (try? load(checkpoint, in: project)) != nil else { continue }
+            message = "Reopened \(revision.revisionId) from older checkpoint \(checkpoint.lastPathComponent); newer stale files untouched."
+            return
+        }
+        reset(in: project)
+        message = "No checkpoint in this project verifies. Start a new revision instead."
+    }
+
+    func startNewRevision() {
+        guard let project else { return }
+        reset(in: project)
+        message = "Started \(revision.revisionId) with no prior work. Re-import the PDF; identical bytes reuse the stored source."
+    }
+
+    private func reset(in project: URL) {
+        revision = PreconRevision(revisionId: nextRevisionID(in: project))
+        drafts = [:]
+        currentSource = nil
         pageImage = nil
+        pageFrame = nil
+        staleReasons = []
         dirty = false
         pending = []
-        guard let checkpoint = latestCheckpoint(in: url) else { message = "New project. Import a PDF to begin."; return }
-        attempt {
-            let (saved, record) = try store.resume(from: checkpoint, in: url)
-            revision = saved
-            if let path = record.measurementDigests.keys.first(where: { $0.hasSuffix("-measurements.json") }) {
-                measurements = try PreconJSON.decoder.decode(TakeoffMeasurements.self, from: Data(contentsOf: url.appending(path: path)))
-            }
-            loadPage()
-            message = "Reopened \(saved.revisionId) from verified checkpoint."
+    }
+
+    private func load(_ checkpoint: URL, in project: URL) throws {
+        guard let store else { return }
+        let (saved, record) = try store.resume(from: checkpoint, in: project)
+        for path in record.measurementDigests.keys.sorted() where path.hasSuffix("-measurements.json") {
+            let draft = try PreconJSON.decoder.decode(TakeoffMeasurements.self, from: Data(contentsOf: project.appending(path: path)))
+            drafts[draft.source.id] = draft
         }
+        revision = saved
+        if let first = tracedDrafts.first?.source.id ?? saved.sources.first?.id { selectPage(first) }
     }
 
     func importPDF() {
@@ -104,32 +156,37 @@ final class TakeoffController: ObservableObject {
         guard panel.runModal() == .OK, let url = panel.url else { return }
         attempt {
             let records = try store.importSource(url, into: project, role: .proposed, revision: "IMPORTED")
-            let traced = measurements.map { !$0.polys.isEmpty || !$0.routes.isEmpty || !$0.counts.isEmpty } ?? false
             mutate {
                 revision.sources += records.filter { record in !revision.sources.contains { $0.id == record.id } }
-                // ponytail: one traced page per project revision; page picker and per-page measurement files come later
-                if !traced { measurements = TakeoffMeasurements(source: records[0]) }
             }
-            loadPage()
-            message = "Imported \(url.lastPathComponent): \(records.count) page(s), hash \(records[0].sha256.prefix(12))."
-                + (traced ? " Registered only; tracing stays on the current page." : " Tracing page 1.")
+            selectPage(records[0].id)
+            message = "Imported \(url.lastPathComponent): \(records.count) page(s), hash \(records[0].sha256.prefix(12)). Tracing page 1."
         }
+    }
+
+    /// Switching pages is not an edit; an untouched page draft never reaches the revision.
+    func selectPage(_ id: String) {
+        guard let source = revision.sources.first(where: { $0.id == id }) else { return }
+        pending = []
+        currentSource = id
+        if drafts[id] == nil { drafts[id] = TakeoffMeasurements(source: source) }
+        loadPage()
     }
 
     private func loadPage() {
         guard let project, let source = measurements?.source,
-              let page = PDFDocument(url: project.appending(path: source.path))?.page(at: source.pageIndex) else { return }
-        let bounds = page.bounds(for: .mediaBox)
-        // ponytail: rotated pages unsupported; coordinates assume the unrotated media box, as the plane schema does
-        if page.rotation != 0 { message = "Page is rotated \(page.rotation) degrees; tracing assumes the unrotated page." }
-        pageImage = page.thumbnail(of: CGSize(width: bounds.width * Self.displayScale, height: bounds.height * Self.displayScale), for: .mediaBox)
+              let page = PDFDocument(url: project.appending(path: source.path))?.page(at: source.pageIndex) else {
+            pageImage = nil; pageFrame = nil; return
+        }
+        pageFrame = PageFrame(page)
+        pageImage = PageFrame.render(page, scale: Self.displayScale)
     }
 
     // MARK: Tracing
 
     func tap(at location: CGPoint) {
-        guard measurements != nil else { return }
-        let point = [(location.x / Self.displayScale * 100).rounded() / 100, (location.y / Self.displayScale * 100).rounded() / 100]
+        guard measurements != nil, let pageFrame else { return }
+        let point = pageFrame.toPage([location.x / Self.displayScale, location.y / Self.displayScale]).map { ($0 * 100).rounded() / 100 }
         switch tool {
         case .calibrateX, .calibrateY:
             pending.append(point)
@@ -194,23 +251,26 @@ final class TakeoffController: ObservableObject {
 
     var workingRevision: PreconRevision {
         var working = revision
-        if let measurements {
-            working.calibrations = [measurements.calibration]
-            working.quantities = measurements.quantities()
-            working.checks = measurements.checks()
-        }
+        let traced = tracedDrafts
+        working.calibrations = traced.map(\.calibration)
+        working.quantities = traced.flatMap { $0.quantities() }
+        working.checks = traced.flatMap { $0.checks() }
         return working
     }
 
+    /// One approval covers every traced page, so each needs a candidate calibration and known quantities.
     var canApprove: Bool {
-        guard let measurements, measurements.calibration.status == .candidate else { return false }
-        return (try? measurements.area?.get().topology) != .failed && workingRevision.quantities.allSatisfy { $0.value != nil }
+        let traced = tracedDrafts
+        return !traced.isEmpty && traced.allSatisfy { draft in
+            draft.calibration.status == .candidate && (try? draft.area?.get().topology) != .failed
+                && draft.quantities().allSatisfy { $0.value != nil }
+        }
     }
 
     /// Human gate: marks calibration reviewed first, then binds the approval to the resulting snapshot digest.
     func approveGeometry() {
         attempt {
-            mutate(resetReview: false) { measurements?.calibrationReviewed = true }
+            mutate(resetReview: false) { for draft in tracedDrafts { drafts[draft.source.id]?.calibrationReviewed = true } }
             let digest = try workingRevision.snapshotDigest()
             revision.approvals.append(ApprovalRecord(gate: .reviewedGeometry, status: .approved, snapshotSha256: digest,
                                                      actor: NSUserName(), at: ISO8601DateFormatter().string(from: Date())))
@@ -219,13 +279,17 @@ final class TakeoffController: ObservableObject {
     }
 
     func save() {
-        guard let store, let project, let measurements else { return }
+        guard let store, let project else { return }
         attempt {
             let saved = workingRevision
             let id = saved.revisionId
-            var paths = [try store.saveMeasurement(try PreconJSON.encoder.encode(measurements), named: "\(id)-measurements.json", in: project)]
-            if let plane = measurements.plane {
-                paths.append(try store.saveMeasurement(try PreconJSON.encoder.encode(plane), named: "\(id)-plane.json", in: project))
+            var paths: [String] = []
+            for draft in tracedDrafts {
+                let name = "\(id)-\(draft.source.id)"
+                paths.append(try store.saveMeasurement(try PreconJSON.encoder.encode(draft), named: "\(name)-measurements.json", in: project))
+                if let plane = draft.plane {
+                    paths.append(try store.saveMeasurement(try PreconJSON.encoder.encode(plane), named: "\(name)-plane.json", in: project))
+                }
             }
             _ = try store.saveRevision(saved, in: project)
             _ = try store.saveCheckpoint(for: saved, in: project, measurements: paths)
@@ -241,7 +305,7 @@ final class TakeoffController: ObservableObject {
             revision.revisionId = nextRevisionID(in: project)
             dirty = true
         }
-        if resetReview { measurements?.calibrationReviewed = false }
+        if resetReview { for id in drafts.keys { drafts[id]?.calibrationReviewed = false } }
         change()
         for index in revision.approvals.indices where revision.approvals[index].status == .approved {
             revision.approvals[index].status = .stale
@@ -253,7 +317,7 @@ final class TakeoffController: ObservableObject {
     }
 
     private func nextID(_ prefix: String, _ existing: [String]) -> String {
-        let used = existing.compactMap { Int($0.dropFirst(prefix.count)) }
+        let used = existing.filter { $0.hasPrefix(prefix) }.compactMap { Int($0.dropFirst(prefix.count)) }
         return String(format: "%@%02d", prefix, (used.max() ?? 0) + 1)
     }
 
@@ -263,14 +327,13 @@ final class TakeoffController: ObservableObject {
         return "R\((used.max() ?? 0) + 1)"
     }
 
-    private func latestCheckpoint(in project: URL) -> URL? {
+    /// Newest first.
+    private func checkpoints(in project: URL) -> [URL] {
         let directory = project.appending(path: "checkpoints")
+        let date = { (url: URL) in (try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast }
         return ((try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: [.contentModificationDateKey])) ?? [])
             .filter { $0.pathExtension == "json" }
-            .max { a, b in
-                let date = { (url: URL) in (try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast }
-                return date(a) < date(b)
-            }
+            .sorted { date($0) > date($1) }
     }
 }
 
@@ -293,10 +356,13 @@ struct PreconstructionView: View {
                     TakeoffReviewPanel(takeoff: takeoff, measurements: measurements)
                         .frame(minWidth: 320, idealWidth: 360, maxWidth: 480)
                 }
+            } else if !takeoff.staleReasons.isEmpty {
+                staleRecovery.frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 ContentUnavailableView(takeoff.project == nil ? "Choose a project" : "Import a PDF",
                                        systemImage: "ruler",
                                        description: Text("Sources are copied, hashed and kept read-only inside the project."))
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
             Divider()
             Text(takeoff.message.isEmpty ? " " : takeoff.message)
@@ -328,35 +394,62 @@ struct PreconstructionView: View {
         .padding(10)
     }
 
-    private var toolBar: some View {
-        HStack(spacing: 10) {
-            Picker("Tool", selection: $takeoff.tool) {
-                ForEach(TakeoffController.Tool.allCases) { Text($0.rawValue).tag($0) }
+    private var staleRecovery: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label("Newest checkpoint is stale", systemImage: "exclamationmark.triangle").font(.headline).foregroundStyle(.orange)
+            Text("Saved files no longer match what the checkpoint recorded. Nothing was loaded and nothing will be changed or deleted.")
+                .font(.callout).foregroundStyle(.secondary)
+            ForEach(takeoff.staleReasons, id: \.self) { Text("- \($0)").font(.system(size: 11, design: .monospaced)) }
+            HStack {
+                Button("Open Last Valid Checkpoint", action: takeoff.openLastValidCheckpoint)
+                Button("Start New Revision", action: takeoff.startNewRevision)
+                    .help("Begins an empty revision. Re-importing the same PDF reuses the stored source by hash.")
             }
-            .pickerStyle(.segmented).labelsHidden().frame(width: 380)
-            .onChange(of: takeoff.tool) { takeoff.pending = [] }
-            switch takeoff.tool {
-            case .calibrateX:
-                TextField("Written X ft", text: $takeoff.xFeet).frame(width: 90)
-                Text("Click both ends of a written horizontal dimension").font(.caption).foregroundStyle(.secondary)
-            case .calibrateY:
-                TextField("Written Y ft", text: $takeoff.yFeet).frame(width: 90)
-                Text("Click both ends of a written vertical dimension").font(.caption).foregroundStyle(.secondary)
-            case .count:
-                TextField("Physical item ID", text: $takeoff.physicalItemID).frame(width: 110)
-                Text("Same ID in another view counts once").font(.caption).foregroundStyle(.secondary)
-            case .area, .deduction, .route:
-                Button(takeoff.tool == .route ? "Finish Route" : "Close Shape", action: takeoff.closeShape)
-                    .keyboardShortcut(.return, modifiers: [])
-                    .disabled(takeoff.pending.count < (takeoff.tool == .route ? 2 : 3))
-                Button("Undo Point") { _ = takeoff.pending.popLast() }.disabled(takeoff.pending.isEmpty)
-                Button("Cancel") { takeoff.pending = [] }.disabled(takeoff.pending.isEmpty)
-                    .keyboardShortcut(.escape, modifiers: [])
-            }
-            Spacer()
         }
-        .controlSize(.small)
-        .padding(8)
+        .frame(maxWidth: 560)
+    }
+
+    private var toolBar: some View {
+        // Scrolls rather than squeezing buttons or wrapping captions into a tall row that shifts the canvas.
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 10) {
+                if takeoff.revision.sources.count > 1 {
+                    Picker("Page", selection: Binding(get: { takeoff.currentSource ?? "" }, set: { takeoff.selectPage($0) })) {
+                        ForEach(takeoff.revision.sources, id: \.id) { source in
+                            let traced = takeoff.tracedDrafts.contains { $0.source.id == source.id }
+                            Text("\(source.path.split(separator: "/").last ?? "") p\(source.pageIndex + 1)\(traced ? " *" : "")").tag(source.id)
+                        }
+                    }
+                    .labelsHidden().frame(width: 180).help("* marks pages with traced measurements")
+                }
+                Picker("Tool", selection: $takeoff.tool) {
+                    ForEach(TakeoffController.Tool.allCases) { Text($0.rawValue).tag($0) }
+                }
+                .pickerStyle(.segmented).labelsHidden().frame(width: 380)
+                .onChange(of: takeoff.tool) { takeoff.pending = [] }
+                switch takeoff.tool {
+                case .calibrateX:
+                    TextField("Written X ft", text: $takeoff.xFeet).frame(width: 90)
+                    Text("Click both ends of a written horizontal dimension").lineLimit(1).font(.caption).foregroundStyle(.secondary)
+                case .calibrateY:
+                    TextField("Written Y ft", text: $takeoff.yFeet).frame(width: 90)
+                    Text("Click both ends of a written vertical dimension").lineLimit(1).font(.caption).foregroundStyle(.secondary)
+                case .count:
+                    TextField("Physical item ID", text: $takeoff.physicalItemID).frame(width: 110)
+                    Text("Same ID in another view counts once").lineLimit(1).font(.caption).foregroundStyle(.secondary)
+                case .area, .deduction, .route:
+                    Button(takeoff.tool == .route ? "Finish Route" : "Close Shape", action: takeoff.closeShape)
+                        .keyboardShortcut(.return, modifiers: [])
+                        .disabled(takeoff.pending.count < (takeoff.tool == .route ? 2 : 3))
+                    Button("Undo Point") { _ = takeoff.pending.popLast() }.disabled(takeoff.pending.isEmpty)
+                    Button("Cancel") { takeoff.pending = [] }.disabled(takeoff.pending.isEmpty)
+                        .keyboardShortcut(.escape, modifiers: [])
+                }
+                Spacer()
+            }
+            .controlSize(.small)
+            .padding(8)
+        }
     }
 }
 
@@ -377,7 +470,8 @@ private struct TakeoffCanvas: View {
     }
 
     private func point(_ p: [Double]) -> CGPoint {
-        CGPoint(x: p[0] * TakeoffController.displayScale, y: p[1] * TakeoffController.displayScale)
+        let d = takeoff.pageFrame?.toDisplay(p) ?? p
+        return CGPoint(x: d[0] * TakeoffController.displayScale, y: d[1] * TakeoffController.displayScale)
     }
 
     private func path(_ pts: [[Double]], closed: Bool) -> Path {
@@ -446,12 +540,12 @@ private struct TakeoffReviewPanel: View {
                 ForEach(measurements.routes, id: \.id) { route in
                     row(route.id, (try? measurements.routeLength(route)).flatMap { $0 }.map { "\(fmt($0)) LF" } ?? "unknown")
                 }
-                total("QTY-ROUTE", in: revision)
+                total(.LF)
             }
             Section("Count (EA)") {
                 ForEach(measurements.counts, id: \.id) { row($0.id, $0.physicalItemId) }
                 LabeledContent("Marks / physical items", value: "\(measurements.counts.count) / \(Takeoff.physicalCount(measurements.counts.map(\.physicalItemId)))")
-                total("QTY-COUNT", in: revision)
+                total(.EA)
             }
             Section("Review") {
                 Button("Approve Calibration and Geometry", action: takeoff.approveGeometry).disabled(!takeoff.canApprove)
@@ -487,7 +581,7 @@ private struct TakeoffReviewPanel: View {
             } else if case .failure(let error)? = measurements.area {
                 Text(error.localizedDescription).font(.caption).foregroundStyle(.red)
             }
-            total("QTY-AREA", in: takeoff.workingRevision)
+            total(.SF)
         }
     }
 
@@ -501,8 +595,8 @@ private struct TakeoffReviewPanel: View {
     }
 
     @ViewBuilder
-    private func total(_ id: String, in revision: PreconRevision) -> some View {
-        if let quantity = revision.quantities.first(where: { $0.id == id }) {
+    private func total(_ unit: QuantityUnit) -> some View {
+        if let quantity = measurements.quantities().first(where: { $0.unit == unit }) {
             LabeledContent("Provisional total") {
                 Text(quantity.value.map { "\(fmt($0)) \(quantity.unit.rawValue)" } ?? "unknown (\(quantity.unit.rawValue))").bold()
             }

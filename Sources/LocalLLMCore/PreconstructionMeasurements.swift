@@ -65,19 +65,19 @@ public struct TakeoffMeasurements: Codable, Equatable, Sendable {
         if !polys.isEmpty {
             let net = try? area?.get()
             let value = net.flatMap { $0.topology == .failed ? nil : $0.net }
-            rows.append(row("QTY-AREA", item: "AREA-\(source.id)", trade: areaTrade, unit: .SF, value: value,
+            rows.append(row("QTY-AREA-\(source.id)", item: "AREA-\(source.id)", trade: areaTrade, unit: .SF, value: value,
                             basis: "Traced gross minus deductions\(scaleNote)\(net?.topology == .failed ? "; topology failed" : "")",
                             refs: polys.map(\.id)))
         }
         if !routes.isEmpty {
             let lengths = routes.map { try? routeLength($0) }
             let value = lengths.contains { $0 == nil } ? nil : lengths.compactMap { $0 }.reduce(0, +)
-            rows.append(row("QTY-ROUTE", item: "ROUTE-\(source.id)", trade: routeTrade, unit: .LF, value: value,
+            rows.append(row("QTY-ROUTE-\(source.id)", item: "ROUTE-\(source.id)", trade: routeTrade, unit: .LF, value: value,
                             basis: "Traced open routes, no closing segment\(scaleNote)", refs: routes.map(\.id)))
         }
         if !counts.isEmpty {
             // Counts are scale independent; physical items are deduplicated across repeated views.
-            rows.append(row("QTY-COUNT", item: "COUNT-\(source.id)", trade: countTrade, unit: .EA,
+            rows.append(row("QTY-COUNT-\(source.id)", item: "COUNT-\(source.id)", trade: countTrade, unit: .EA,
                             value: Double(Takeoff.physicalCount(counts.map(\.physicalItemId))),
                             basis: "Distinct physical items across \(counts.count) marks", refs: counts.map(\.id)))
         }
@@ -87,16 +87,16 @@ public struct TakeoffMeasurements: Codable, Equatable, Sendable {
     /// Arithmetic and topology recorded separately; visual, scope and artifact checks are not run in this slice.
     public func checks() -> [CheckRecord] {
         guard let area else {
-            return [CheckRecord(id: "CHK-arithmetic", dimension: .arithmetic, status: .pending, evidence: "No usable scale or no area traced")]
+            return [CheckRecord(id: "CHK-arithmetic-\(source.id)", dimension: .arithmetic, status: .pending, evidence: "No usable scale or no area traced")]
         }
         switch area {
         case .success(let takeoff):
-            return [CheckRecord(id: "CHK-arithmetic", dimension: .arithmetic, status: .passed,
+            return [CheckRecord(id: "CHK-arithmetic-\(source.id)", dimension: .arithmetic, status: .passed,
                                 evidence: "gross \(takeoff.gross) - deductions \(takeoff.deductions) = \(takeoff.net) SF"),
-                    CheckRecord(id: "CHK-topology", dimension: .topology, status: takeoff.topology,
+                    CheckRecord(id: "CHK-topology-\(source.id)", dimension: .topology, status: takeoff.topology,
                                 evidence: takeoff.topologyNotes.joined(separator: "; "))]
         case .failure(let error):
-            return [CheckRecord(id: "CHK-arithmetic", dimension: .arithmetic, status: .failed, evidence: error.localizedDescription)]
+            return [CheckRecord(id: "CHK-arithmetic-\(source.id)", dimension: .arithmetic, status: .failed, evidence: error.localizedDescription)]
         }
     }
 

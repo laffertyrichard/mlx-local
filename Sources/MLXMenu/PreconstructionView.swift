@@ -25,6 +25,8 @@ final class TakeoffController: ObservableObject {
     @Published private(set) var pageImage: NSImage?
     @Published private(set) var pageFrame: PageFrame?
     @Published private(set) var staleReasons: [String] = []
+    /// The newest checkpoint couldn't be decoded at all, as opposed to verifying against changed files.
+    @Published private(set) var checkpointCorrupt = false
     @Published private(set) var dirty = false
     @Published var tool: Tool = .area
     @Published var pending: [[Double]] = []
@@ -68,6 +70,13 @@ final class TakeoffController: ObservableObject {
     private func setWorkspace(_ url: URL, remember: Bool) {
         attempt {
             store = try PreconProjectStore(root: url)
+            #if DEBUG
+            // Walkthrough seam, debug builds only: PRECONSTRUCTION_TEST_FAIL_SAVE=revisions,checkpoints fails the first
+            // save write reaching each listed stage once, so a partial save can be induced without touching disk state.
+            if let stages = ProcessInfo.processInfo.environment["PRECONSTRUCTION_TEST_FAIL_SAVE"] {
+                store?.beforeWrite = InjectedSaveFailure(stages.split(separator: ",").map(String.init)).check
+            }
+            #endif
             workspace = url
             if remember { UserDefaults.standard.set(url.path, forKey: Self.workspaceKey) }
             refreshProjects()
@@ -103,6 +112,10 @@ final class TakeoffController: ObservableObject {
         } catch PreconProjectError.staleCheckpoint(let reasons) {
             staleReasons = reasons
             message = "Newest checkpoint is stale; nothing was loaded and no file was changed."
+        } catch PreconProjectError.corrupt(let path) {
+            staleReasons = ["\(path) is unreadable or corrupt"]
+            checkpointCorrupt = true
+            message = "Newest checkpoint is corrupt; nothing was loaded and no file was changed."
         } catch {
             message = error.localizedDescription
         }
@@ -134,6 +147,7 @@ final class TakeoffController: ObservableObject {
         pageImage = nil
         pageFrame = nil
         staleReasons = []
+        checkpointCorrupt = false
         dirty = false
         pending = []
     }
@@ -209,9 +223,10 @@ final class TakeoffController: ObservableObject {
         let length = abs(axis == .x ? b[0] - a[0] : b[1] - a[1])
         guard length > 0 else { message = "Calibration points must differ along \(axis.rawValue)."; return }
         let datum = "\(axis.rawValue) witness \(a[0]),\(a[1]) to \(b[0]),\(b[1])"
-        mutate {
-            measurements?.calibrationChecks.removeAll { $0.axis == axis }
-            measurements?.calibrationChecks.append(CalibrationCheck(axis: axis, coordinateLength: length, realLength: feet, datum: datum))
+        attempt {
+            guard let checks = try measurements?.calibrationChecks(adding: CalibrationCheck(axis: axis, coordinateLength: length,
+                                                                                          realLength: feet, datum: datum)) else { return }
+            mutate { measurements?.calibrationChecks = checks }
         }
     }
 
@@ -253,7 +268,7 @@ final class TakeoffController: ObservableObject {
         var working = revision
         let traced = tracedDrafts
         working.calibrations = traced.map(\.calibration)
-        working.quantities = traced.flatMap { $0.quantities() }
+        working.quantities = TakeoffMeasurements.quantities(across: traced)
         working.checks = traced.flatMap { $0.checks() }
         return working
     }
@@ -278,25 +293,33 @@ final class TakeoffController: ObservableObject {
         }
     }
 
+    /// The store writes the checkpoint last, so a failed save is never a completed revision. Retrying unchanged work
+    /// reuses the files already written; if the work changed since, the partial files keep their ID and this save
+    /// moves to a fresh one (which makes any approval stale, since the snapshot digest covers the revision ID).
     func save() {
         guard let store, let project else { return }
         attempt {
-            let saved = workingRevision
-            let id = saved.revisionId
-            var paths: [String] = []
-            for draft in tracedDrafts {
-                let name = "\(id)-\(draft.source.id)"
-                paths.append(try store.saveMeasurement(try PreconJSON.encoder.encode(draft), named: "\(name)-measurements.json", in: project))
-                if let plane = draft.plane {
-                    paths.append(try store.saveMeasurement(try PreconJSON.encoder.encode(plane), named: "\(name)-plane.json", in: project))
-                }
+            do { try saveBundle(store, project) } catch PreconProjectError.alreadyExists(let name) {
+                let abandoned = revision.revisionId
+                mutate { revision.revisionId = nextRevisionID(in: project) }
+                try saveBundle(store, project)
+                message = "Saved \(revision.revisionId) with checkpoint. An earlier failed save left \(name) for \(abandoned) with different content; it was not overwritten."
             }
-            _ = try store.saveRevision(saved, in: project)
-            _ = try store.saveCheckpoint(for: saved, in: project, measurements: paths)
-            revision = saved
-            dirty = false
-            message = "Saved \(id) with checkpoint."
         }
+    }
+
+    private func saveBundle(_ store: PreconProjectStore, _ project: URL) throws {
+        let saved = workingRevision
+        var files: [(name: String, data: Data)] = []
+        for draft in tracedDrafts {
+            let name = "\(saved.revisionId)-\(draft.source.id)"
+            files.append(("\(name)-measurements.json", try PreconJSON.encoder.encode(draft)))
+            if let plane = draft.plane { files.append(("\(name)-plane.json", try PreconJSON.encoder.encode(plane))) }
+        }
+        _ = try store.saveRevision(saved, measurements: files, in: project)
+        revision = saved
+        dirty = false
+        message = "Saved \(saved.revisionId) with checkpoint."
     }
 
     /// Every edit starts a new unsaved revision and makes earlier geometry approvals stale.
@@ -321,9 +344,12 @@ final class TakeoffController: ObservableObject {
         return String(format: "%@%02d", prefix, (used.max() ?? 0) + 1)
     }
 
+    /// Skips IDs used by revisions and by measurement files a failed save may have left without a revision.
     private func nextRevisionID(in project: URL) -> String {
-        let names = (try? FileManager.default.contentsOfDirectory(atPath: project.appending(path: "revisions").path)) ?? []
-        let used = names.compactMap { name in name.hasPrefix("R") && name.hasSuffix(".json") ? Int(name.dropFirst().dropLast(5)) : nil }
+        let names = ["revisions", "measurements"].flatMap {
+            (try? FileManager.default.contentsOfDirectory(atPath: project.appending(path: $0).path)) ?? []
+        }
+        let used = names.compactMap { name in name.wholeMatch(of: /R(\d+)(?:\.json|-.*)/).flatMap { Int($0.1) } }
         return "R\((used.max() ?? 0) + 1)"
     }
 
@@ -396,8 +422,10 @@ struct PreconstructionView: View {
 
     private var staleRecovery: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Label("Newest checkpoint is stale", systemImage: "exclamationmark.triangle").font(.headline).foregroundStyle(.orange)
-            Text("Saved files no longer match what the checkpoint recorded. Nothing was loaded and nothing will be changed or deleted.")
+            Label(takeoff.checkpointCorrupt ? "Newest checkpoint is corrupt" : "Newest checkpoint is stale", systemImage: "exclamationmark.triangle")
+                .font(.headline).foregroundStyle(.orange)
+            Text((takeoff.checkpointCorrupt ? "The checkpoint file can't be read." : "Saved files no longer match what the checkpoint recorded.")
+                 + " Nothing was loaded and nothing will be changed or deleted.")
                 .font(.callout).foregroundStyle(.secondary)
             ForEach(takeoff.staleReasons, id: \.self) { Text("- \($0)").font(.system(size: 11, design: .monospaced)) }
             HStack {
@@ -528,6 +556,8 @@ private struct TakeoffReviewPanel: View {
                     Text("X and Y disagree. No scale is used and scaled quantities are withheld; nothing is averaged.")
                         .font(.caption).foregroundStyle(.red)
                 }
+                Text("One scale per page: every area and route here uses it. Details drawn at another scale are not supported (A11); measure them on a separate page.")
+                    .font(.caption).foregroundStyle(.secondary)
             }
             Section("Labels") {
                 TextField("Location", text: binding(\.location))
@@ -613,3 +643,21 @@ private struct TakeoffReviewPanel: View {
 
     private func fmt(_ value: Double, _ digits: Int = 2) -> String { String(format: "%.\(digits)f", value) }
 }
+
+#if DEBUG
+/// Fails the first write reaching each listed stage prefix (e.g. "revisions", "checkpoints"), once per process.
+private final class InjectedSaveFailure: @unchecked Sendable {
+    struct Failure: LocalizedError { var path: String; var errorDescription: String? { "Injected test failure before writing \(path)." } }
+    private let lock = NSLock()
+    private var remaining: [String]
+
+    init(_ stages: [String]) { remaining = stages }
+
+    func check(_ path: String) throws {
+        lock.lock(); defer { lock.unlock() }
+        guard let index = remaining.firstIndex(where: { path.hasPrefix($0) }) else { return }
+        remaining.remove(at: index)
+        throw Failure(path: path)
+    }
+}
+#endif

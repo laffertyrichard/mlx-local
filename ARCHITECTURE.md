@@ -104,6 +104,29 @@ Documents always normalize before model execution. Multi-image comparisons delib
 
 Workers bind to probed loopback ports. Readiness verifies the requested model identity rather than accepting an arbitrary HTTP 200. A process registry synchronously terminates children during application shutdown.
 
+## Live memory accounting
+
+For a successful observation A, admission requires incoming peak P plus in-flight reservations L
+not to exceed `0.80 * A` (the existing 20% safety reserve). Resident allocations are already excluded
+from A: their estimates are neither subtracted again nor added back after eviction. Independently,
+resident peak estimates E plus L plus P must fit `0.72 * physical`. Model estimates represent peak
+weights, KV cache and temporary buffers: `max(size * 1.15, benchmark peak * 1.15)`.
+
+Admission evicts idle models in LRU order and re-observes after every unload; estimated reclamation
+never authorizes a load. Snapshots report the smaller remaining live/commitment headroom.
+`reclaimableMemoryBytes` remains an idle-estimate **routing hint only**. The unchanged router applies
+its extra 0.9 margin; a route allowed by the hint can still fail authoritative admission.
+
+Full-peak in-flight reservations remain until load completes. This is the conservative count-once
+exception: partial allocations may already reduce A, so concurrent admission can be refused rather
+than over-admitted. Reservation-to-resident transfer happens before callbacks; failed loads release
+their reservations. Active-model KV growth is not attributable per model. The 20% reserve cushions
+it only heuristically, not as a guaranteed growth budget.
+
+If observation fails, admission uses only the 72% estimate cap, never physical memory as available.
+With no provider, headless tools retain their fixed `memoryBudgetBytes` estimate accounting and
+reclaimable hints unchanged. A valid zero-availability observation is not observation failure.
+
 ## Pipeline contracts and recovery
 
 Intermediate values are `PipelineArtifact`s with kind, content, source provenance, confidence, and metadata. OCR has a basic repetition/completeness confidence gate. Structured JSON is normalized/validated only at the terminal stage, retried once, then falls back.

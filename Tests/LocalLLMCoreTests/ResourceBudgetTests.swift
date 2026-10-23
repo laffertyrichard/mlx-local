@@ -26,15 +26,34 @@ struct ResourceBudgetTests {
         }
     }
 
+    private actor LoadPause {
+        private var started = false
+        private var startWaiter: CheckedContinuation<Void, Never>?
+        private var finishWaiter: CheckedContinuation<Void, Never>?
+        func pause() async {
+            await withCheckedContinuation { continuation in
+                finishWaiter = continuation; started = true
+                startWaiter?.resume(); startWaiter = nil
+            }
+        }
+        func waitUntilStarted() async {
+            if started { return }
+            await withCheckedContinuation { startWaiter = $0 }
+        }
+        func finish() { finishWaiter?.resume(); finishWaiter = nil }
+    }
+
     private enum LoadFailure: Error { case expected }
     private struct StubRuntime: ModelRuntime {
         let backend: InferenceBackend = .mlxLM
         let memory: Memory
         var footprints: [String: Int64] = [:]
         var failures: Set<String> = []
+        var pause: LoadPause?
         func load(model: RegisteredModel) async throws {
             if failures.contains(model.id) { throw LoadFailure.expected }
             memory.allocate(footprints[model.id] ?? model.approximateMemoryBytes)
+            await pause?.pause()
         }
         func unload(model: RegisteredModel) async {
             memory.release(footprints[model.id] ?? model.approximateMemoryBytes, id: model.id)
@@ -52,12 +71,10 @@ struct ResourceBudgetTests {
     }
 
     private func manager(_ models: [RegisteredModel], runtime: StubRuntime) -> ModelResourceManager {
-        // Baseline adapter: expose the fake observation through the original budget API.
         ModelResourceManager(registry: ModelRegistry(models: models), runtimes: [.mlxLM: runtime],
                              memoryBudgetBytes: 72_000, budgetProvider: {
             let observation = runtime.memory.observation
-            let cap = Int64(Double(observation.physical) * 0.72)
-            return observation.available.map { min(cap, Int64(Double($0) * 0.8)) } ?? cap
+            return MemoryObservation(availableBytes: observation.available, physicalBytes: observation.physical)
         })
     }
 
@@ -101,6 +118,22 @@ struct ResourceBudgetTests {
         let snapshot = await manager.snapshot(totalMemoryBytes: memory.physical)
         #expect(snapshot.loadedModelIDs == ["b"])
         #expect(snapshot.availableMemoryBytes == 16_000)
+    }
+
+    @Test("admission re-observes after each LRU eviction, not only the first")
+    func multipleEvictions() async throws {
+        let memory = Memory(80_000, physical: 200_000)
+        let runtime = StubRuntime(memory: memory)
+        let a = model("a", 20_000), b = model("b", 20_000), c = model("c", 35_000)
+        let manager = manager([a, b, c], runtime: runtime)
+        _ = try await manager.ensureLoaded(a, runtime: runtime, onEvent: nil)
+        _ = try await manager.ensureLoaded(b, runtime: runtime, onEvent: nil)
+        memory.set(10_000)
+        _ = try await manager.ensureLoaded(c, runtime: runtime, onEvent: nil)
+        #expect(memory.unloaded == ["a", "b"])
+        let snapshot = await manager.snapshot(totalMemoryBytes: memory.physical)
+        #expect(snapshot.loadedModelIDs == ["c"])
+        #expect(snapshot.availableMemoryBytes == 12_000)
     }
 
     @Test("a routing reclaim hint cannot override admission after actual eviction")
@@ -155,17 +188,18 @@ struct ResourceBudgetTests {
         #expect(snapshot.loadedModelIDs.isEmpty && snapshot.reclaimableMemoryBytes == 0)
     }
 
-    @Test("missing observation falls back to the estimate cap, not physical availability")
-    func missingObservation() async throws {
-        let memory = Memory(nil)
+    @Test("missing observation falls back to the estimate cap, not physical availability", arguments: [100_000, 200_000])
+    func missingObservation(physical: Int64) async throws {
+        let memory = Memory(nil, physical: physical)
         let runtime = StubRuntime(memory: memory)
-        let a = model("a", 50_000), b = model("b", 25_000), tooBig = model("large", 73_000)
+        let factor = physical / 100_000
+        let a = model("a", 50_000 * factor), b = model("b", 25_000 * factor), tooBig = model("large", 73_000 * factor)
         let manager = manager([a, b, tooBig], runtime: runtime)
         _ = try await manager.ensureLoaded(a, runtime: runtime, onEvent: nil)
-        #expect(await manager.snapshot(totalMemoryBytes: memory.physical).availableMemoryBytes == 22_000)
+        #expect(await manager.snapshot(totalMemoryBytes: memory.physical).availableMemoryBytes == 22_000 * factor)
         _ = try await manager.ensureLoaded(b, runtime: runtime, onEvent: nil)
         #expect(memory.unloaded == ["a"])
-        #expect(await manager.snapshot(totalMemoryBytes: memory.physical).availableMemoryBytes == 47_000)
+        #expect(await manager.snapshot(totalMemoryBytes: memory.physical).availableMemoryBytes == 47_000 * factor)
         await #expect(throws: ResourceError.self) {
             _ = try await manager.ensureLoaded(tooBig, runtime: runtime, onEvent: nil)
         }
@@ -198,6 +232,55 @@ struct ResourceBudgetTests {
         _ = try await manager.ensureLoaded(b, runtime: runtime, onEvent: nil)
         #expect(memory.unloaded == ["a"])
         #expect(await manager.snapshot(totalMemoryBytes: memory.physical).availableMemoryBytes == 15_000)
+    }
+
+    @Test("partially allocated in-flight loads retain conservative full reservations")
+    func concurrentReservation() async throws {
+        let memory = Memory(40_000)
+        let pause = LoadPause()
+        let paused = StubRuntime(memory: memory, footprints: ["a": 10_000], pause: pause)
+        let runtime = StubRuntime(memory: memory)
+        let a = model("a", 20_000), b = model("b", 10_000)
+        let manager = manager([a, b], runtime: runtime)
+        let loading = Task { try await manager.ensureLoaded(a, runtime: paused, onEvent: nil) }
+        await pause.waitUntilStarted()
+        #expect(await manager.snapshot(totalMemoryBytes: memory.physical).availableMemoryBytes == 4_000)
+        await #expect(throws: ResourceError.self) {
+            _ = try await manager.ensureLoaded(b, runtime: runtime, onEvent: nil)
+        }
+        await pause.finish()
+        _ = try await loading.value
+        #expect(await manager.snapshot(totalMemoryBytes: memory.physical).availableMemoryBytes == 24_000)
+        _ = try await manager.ensureLoaded(b, runtime: runtime, onEvent: nil)
+        #expect(await manager.snapshot(totalMemoryBytes: memory.physical).loadedModelIDs == ["a", "b"])
+        #expect(memory.unloaded.isEmpty)
+    }
+
+    @Test("load completion transfers reservations before reentrant event callbacks")
+    func completionCallbackHeadroom() async throws {
+        let memory = Memory(50_000)
+        let runtime = StubRuntime(memory: memory, footprints: ["a": 10_000])
+        let a = model("a", 30_000)
+        let manager = manager([a], runtime: runtime)
+        _ = try await manager.ensureLoaded(a, runtime: runtime, onEvent: { event in
+            if case .modelLoaded = event {
+                let snapshot = await manager.snapshot(totalMemoryBytes: memory.physical)
+                #expect(snapshot.loadedModelIDs == ["a"])
+                #expect(snapshot.availableMemoryBytes == 32_000)
+            }
+        })
+    }
+
+    @Test("observed zero availability denies admission rather than using the failure fallback")
+    func zeroAvailability() async {
+        let memory = Memory(0)
+        let runtime = StubRuntime(memory: memory)
+        let a = model("a", 1_000)
+        let manager = manager([a], runtime: runtime)
+        #expect(await manager.snapshot(totalMemoryBytes: memory.physical).availableMemoryBytes == 0)
+        await #expect(throws: ResourceError.self) {
+            _ = try await manager.ensureLoaded(a, runtime: runtime, onEvent: nil)
+        }
     }
 
     @Test("live observations reflect external memory changes between admissions")

@@ -170,6 +170,20 @@ public enum ResourceError: LocalizedError {
     }
 }
 
+/// Machine availability already excludes resident allocations. Nil availability means observation failed.
+public struct MemoryObservation: Sendable {
+    public var availableBytes: Int64?
+    public var physicalBytes: Int64
+
+    public init(availableBytes: Int64?, physicalBytes: Int64) {
+        self.availableBytes = availableBytes; self.physicalBytes = physicalBytes
+    }
+
+    // ponytail: retain the 20% live reserve and separate 72% estimated-commitment ceiling.
+    public var commitmentCapBytes: Int64 { Int64(Double(physicalBytes) * 0.72) }
+    public var usableBytes: Int64? { availableBytes.map { Int64(Double($0) * 0.80) } }
+}
+
 public actor ModelResourceManager {
     private struct Residency { var lastUsed: Date; var activeRequests: Int }
     private var registry: ModelRegistry
@@ -178,26 +192,40 @@ public actor ModelResourceManager {
     private var loading: [String: Task<Void, Error>] = [:]
     private var reservedMemory: [String: Int64] = [:]
     public let memoryBudgetBytes: Int64
-    // ponytail: budgetProvider re-reads live memory pressure per admission. Without it the
-    // budget is frozen at init, so freeing 30 GB never widens it and filling 30 GB never
-    // narrows it. nil keeps the fixed memoryBudgetBytes (tests, headless tools).
-    private let budgetProvider: (@Sendable () -> Int64)?
+    private let budgetProvider: (@Sendable () -> MemoryObservation)?
     public var stageTimeout: Duration
 
     public init(registry: ModelRegistry, runtimes: [InferenceBackend: any ModelRuntime], memoryBudgetBytes: Int64,
-                stageTimeout: Duration = .seconds(600), budgetProvider: (@Sendable () -> Int64)? = nil) {
+                stageTimeout: Duration = .seconds(600), budgetProvider: (@Sendable () -> MemoryObservation)? = nil) {
         self.registry = registry; self.runtimes = runtimes; self.memoryBudgetBytes = memoryBudgetBytes
         self.budgetProvider = budgetProvider; self.stageTimeout = stageTimeout
     }
 
-    /// Budget as of right now. Costs a `vm_stat` spawn when a provider is set, so callers
-    /// read it once per admission rather than per eviction-loop iteration.
-    public func currentBudgetBytes() -> Int64 { budgetProvider?() ?? memoryBudgetBytes }
+    /// Uncommitted budget ceiling, not headroom; use snapshot for capacity remaining after commitments.
+    public func currentBudgetBytes() -> Int64 {
+        guard let observation = budgetProvider?() else { return memoryBudgetBytes }
+        return min(observation.usableBytes ?? observation.commitmentCapBytes, observation.commitmentCapBytes)
+    }
+
+    /// Count resident allocations only through A, never subtract their estimates from live availability.
+    /// Peaks (weights + KV + temporary buffers) reserve incoming/in-flight demand; resident peaks belong
+    /// only in the separate commitment cap. Full in-flight reservations conservatively double-count any
+    /// partial allocation already in A until load returns. The 20% reserve cushions untracked active KV
+    /// growth, but is not a per-model growth guarantee. Missing A uses the estimate cap alone.
+    private func admissionHeadroom() -> Int64 {
+        let inFlight = reservedMemory.values.reduce(0, +)
+        let committed = residentMemory() + inFlight
+        guard let observation = budgetProvider?() else { return memoryBudgetBytes - committed }
+        let capRemaining = observation.commitmentCapBytes - committed
+        guard let usable = observation.usableBytes else { return capRemaining }
+        return min(usable - inFlight, capRemaining)
+    }
 
     public func snapshot(totalMemoryBytes: Int64) -> MachineResources {
-        let used = resident.keys.compactMap { registry.model(id: $0)?.approximateMemoryBytes }.reduce(0, +) + reservedMemory.values.reduce(0, +)
+        // Routing hint only: estimates of what eviction might free, not observed availability.
+        // Admission never adds this hint to A; it re-observes after each eviction instead.
         let reclaimable = resident.compactMap { id, state in state.activeRequests == 0 ? registry.model(id: id)?.approximateMemoryBytes : nil }.reduce(0, +)
-        return MachineResources(totalMemoryBytes: totalMemoryBytes, availableMemoryBytes: max(0, currentBudgetBytes() - used),
+        return MachineResources(totalMemoryBytes: totalMemoryBytes, availableMemoryBytes: max(0, admissionHeadroom()),
                                 loadedModelIDs: Set(resident.keys), reclaimableMemoryBytes: reclaimable)
     }
 
@@ -399,8 +427,7 @@ public actor ModelResourceManager {
             }
             return (Date().timeIntervalSince(waitStarted) * 1000, false)
         }
-        let budget = currentBudgetBytes()
-        while residentMemory() + reservedMemory.values.reduce(0, +) + model.approximateMemoryBytes > budget {
+        while model.approximateMemoryBytes > admissionHeadroom() {
             guard let victim = resident.filter({ $0.value.activeRequests == 0 }).min(by: { $0.value.lastUsed < $1.value.lastUsed })?.key else {
                 throw ResourceError.memoryBudgetExceeded(modelID: model.id)
             }
@@ -413,12 +440,13 @@ public actor ModelResourceManager {
         loading[model.id] = task
         do {
             try await task.value
+            // Transfer the reservation to residency before a callback can re-enter admission or snapshot.
+            loading.removeValue(forKey: model.id); reservedMemory.removeValue(forKey: model.id)
             if resident[model.id] == nil {
                 resident[model.id] = Residency(lastUsed: Date(), activeRequests: 0)
                 var loadedModel = model; loadedModel.loadedState = .loaded; loadedModel.health = .healthy; registry.upsert(loadedModel)
                 await onEvent?(.modelLoaded(model.id, milliseconds: Date().timeIntervalSince(start) * 1000))
             }
-            loading.removeValue(forKey: model.id); reservedMemory.removeValue(forKey: model.id)
             return (Date().timeIntervalSince(start) * 1000, false)
         } catch {
             loading.removeValue(forKey: model.id); reservedMemory.removeValue(forKey: model.id)

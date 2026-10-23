@@ -91,7 +91,7 @@ Branch `fix/interpretation-integrity` (baseline commit `c1aa1aa` = session 3 wor
 |---|---|---|
 | F01 | Symlinked child dirs (`measurements/`, `revisions/`, `checkpoints/`, `interpretation/`, `sources/<hash>/`) let writes escape the root: `resolvingSymlinksInPath` leaves a missing leaf unresolved | Fixed: `contained` resolves the deepest existing ancestor and refuses dangling links; every write goes through it |
 | F02 | A saved interpretation unit was returned before the PDF was re-hashed | Fixed: current bytes are hashed before any saved unit is used |
-| F03 | Prompt text not in unit identity | Fixed: instructions are pipeline properties digested into the ID; version bumped to `precon-interpret-2` for code-side rule changes |
+| F03 | Prompt text not in unit identity | Fixed: instructions are pipeline properties digested into the ID; version bumped (now `precon-interpret-3`) for code-side rule changes |
 | F04 | A failed save part-way left files that write-once refused on retry | Fixed: `PreconProjectStore.saveRevision(_:measurements:in:)` writes the checkpoint last; identical bytes are reused on retry; changed work moves to a fresh revision ID (view) |
 | F05 | Corrupt files reported as stale | Fixed: `PreconProjectError.corrupt`; the view still shows the recovery choices |
 | F06 | `VisionFocus` short/NaN/inf rects crashed the process | Fixed: shape, finiteness, size, page bounds and known source checked before any call (`TakeoffError.invalidGeometry`) |
@@ -108,8 +108,10 @@ Branch `fix/interpretation-integrity` (baseline commit `c1aa1aa` = session 3 wor
 | N02 | (Codex) token matching dropped punctuation, so `1.2 in` matched `1/2 in`; candidate words were unordered | Fixed: whitespace-normalised literal match on word boundaries; candidate words must appear in the quote in order |
 | N03 | (Codex) a deduction touching a concave boundary was promoted to `.passed` | Fixed: deductions and add-backs pass containment only when strictly inside; touching stays `unavailable` |
 | N04 | (Codex, P3) corrupt checkpoint shown as "stale" in the recovery panel | Fixed: panel says corrupt |
+| R2-I01 | (Codex round 2) quote rules changed without a pipeline version bump, so units saved under the old rules would be reused | Fixed: `precon-interpret-3` |
+| R2-I02 | (Codex round 2) a quote could start or end inside a number (`2 in` from `1/2 in`) | Fixed: `/ . ,` between digits is not a word boundary |
 
-Tests on this branch (`swift test list`, parameterised tests count once): 70 = model cache 9, takeoff 13, project 8, measurements 5, page frame 1 (4 rotations), interpretation 6, corrective regressions 15, adversarial 13. 36 of these predate session 3.
+Tests on this branch (`swift test list`, parameterised tests count once): 71 = model cache 9, takeoff 13, project 8, measurements 5, page frame 1 (4 rotations), interpretation 6, corrective regressions 16, adversarial 13. 36 of these predate session 3.
 
 Regression evidence: the tests that compile against `c1aa1aa` fail there (F01 import, F02, F06 crash, F07, F09, F12); OpenCode's adversarial suite (`PreconstructionAdversarialTests.swift`, written against the baseline) independently failed for F01, F02, F04, F05, F06, F07, F08, F09, F10.
 

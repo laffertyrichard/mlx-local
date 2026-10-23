@@ -70,7 +70,7 @@ public struct VisionFocus: Sendable {
 
 public struct InterpretationPipeline: Sendable {
     /// Bump when code-side rules change (quote support, OCR checks, chunking). Prompts are digested separately.
-    public static let version = "precon-interpret-2"
+    public static let version = "precon-interpret-3"
     public var store: PreconProjectStore
     public var project: URL
     public var interpreter: PreconInterpreter
@@ -330,15 +330,23 @@ extension InterpretationPipeline {
         text.lowercased().split(whereSeparator: \.isWhitespace).joined(separator: " ")
     }
 
-    /// Literal match that starts and ends on a word boundary, so "ft" never matches inside "left".
+    /// Literal match that starts and ends on a word boundary, so "ft" never matches inside "left", and never splits a
+    /// number: "2 in" is not in "1/2 in", "1" is not in "1.2" or "1,200".
     static func containsBounded(_ haystack: String, _ needle: String) -> Bool {
-        guard !needle.isEmpty else { return false }
-        var start = haystack.startIndex
-        while let range = haystack.range(of: needle, range: start..<haystack.endIndex) {
-            let before = range.lowerBound == haystack.startIndex ? nil : haystack[haystack.index(before: range.lowerBound)]
-            let after = range.upperBound == haystack.endIndex ? nil : haystack[range.upperBound]
-            if !(before.map { $0.isLetter || $0.isNumber } ?? false), !(after.map { $0.isLetter || $0.isNumber } ?? false) { return true }
-            start = haystack.index(after: range.lowerBound)
+        guard let first = needle.first, let last = needle.last else { return false }
+        let text = Array(haystack), word = Array(needle)
+        let joins = { (c: Character) in c.isLetter || c.isNumber }
+        let numberGlue: Set<Character> = ["/", ".", ","]
+        guard word.count <= text.count else { return false }
+        for start in 0...(text.count - word.count) where Array(text[start..<(start + word.count)]) == word {
+            let end = start + word.count
+            let before = start > 0 ? text[start - 1] : nil, beyondBefore = start > 1 ? text[start - 2] : nil
+            let after = end < text.count ? text[end] : nil, beyondAfter = end + 1 < text.count ? text[end + 1] : nil
+            let splitsBefore = before.map(joins) ?? false
+                || (first.isNumber && before.map(numberGlue.contains) == true && beyondBefore?.isNumber == true)
+            let splitsAfter = after.map(joins) ?? false
+                || (last.isNumber && after.map(numberGlue.contains) == true && beyondAfter?.isNumber == true)
+            if !splitsBefore && !splitsAfter { return true }
         }
         return false
     }

@@ -807,11 +807,19 @@ struct PreconstructionCorrectiveTests {
         context.endPDFPage(); context.closePDF()
         let sources = try workspace.store.importSource(url, into: project, role: .proposed, revision: "R1")
         let mock = MockInterpreter { _, _ in
-            candidates([("1.2 in", "1.2 in", 0.95), ("10 ft x 12 ft", "12 ft x 10 ft", 0.95), ("1/2 in", "1/2 in", 0.95)])
+            candidates([("1.2 in", "1.2 in", 0.95), ("10 ft x 12 ft", "12 ft x 10 ft", 0.95), ("1/2 in", "1/2 in", 0.95),
+                        ("2 in", "2 in", 0.95), ("1", "1", 0.95)])
         }
         let units = try await InterpretationPipeline(store: workspace.store, project: project, interpreter: mock.closure).run(sources)
         #expect(units[0].candidates.map(\.heldReason) == ["quote not found in source text",
-                                                          "candidate text not supported by its quote", nil])
+                                                          "candidate text not supported by its quote", nil,
+                                                          "quote not found in source text", "quote not found in source text"],
+                "R2-I02: a quote may not start or end inside a fraction or decimal")
+    }
+
+    @Test("R2-I01 (Codex review): the quote-rule change gets a new pipeline version, so units saved under old rules are not reused")
+    func versionBumpedForRuleChange() {
+        #expect(!["precon-interpret-1", "precon-interpret-2"].contains(InterpretationPipeline.version))
     }
 
     @Test("F14/A09: agreement is judged against click uncertainty in PDF points, not float noise")

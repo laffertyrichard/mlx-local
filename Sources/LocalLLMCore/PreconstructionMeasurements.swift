@@ -43,6 +43,18 @@ public struct TakeoffMeasurements: Codable, Equatable, Sendable {
                            status: status == .candidate && calibrationReviewed ? .reviewed : status, checks: calibrationChecks)
     }
 
+    /// One calibration per page: independent detail planes (A11) are not supported. Once areas or routes are traced under
+    /// an established scale, a new witness must agree with every existing check, so a differently scaled detail is
+    /// refused instead of silently rescaling what was already traced. Counts don't depend on scale.
+    public func calibrationChecks(adding check: CalibrationCheck) throws -> [CalibrationCheck] {
+        let replaced = calibrationChecks.filter { $0.axis != check.axis } + [check]
+        guard !polys.isEmpty || !routes.isEmpty, let current = calibration.scale else { return replaced }
+        guard Calibration.evaluate(calibrationChecks + [check]).status == .candidate else {
+            throw TakeoffError.unsupportedMixedScale(current: current, proposed: String(format: "%.3f pt/ft", check.scale))
+        }
+        return replaced
+    }
+
     /// Helper-schema plane, written beside the revision so geometry.py can recheck it. Nil without a usable scale.
     public var plane: AreaPlane? {
         guard let scale = calibration.scale, !polys.isEmpty else { return nil }

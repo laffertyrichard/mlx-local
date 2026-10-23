@@ -823,6 +823,42 @@ struct PreconstructionCorrectiveTests {
         #expect(!["precon-interpret-1", "precon-interpret-2", "precon-interpret-3"].contains(InterpretationPipeline.version))
     }
 
+    @Test("Closeout: a save failed through the write seam at any stage publishes nothing; identical retry completes once",
+          arguments: ["measurements/", "revisions/", "checkpoints/"])
+    func seamInterruptedSave(stage: String) throws {
+        let workspace = try Workspace(); defer { workspace.cleanUp() }
+        let project = try workspace.project()
+        var store = workspace.store
+        store.beforeWrite = { if $0.hasPrefix(stage) { throw PreconProjectError.invalidName("injected at \($0)") } }
+        let files = [(name: "R1-S1-measurements.json", data: Data(#"{"a": 1}"#.utf8))]
+        #expect(throws: PreconProjectError.invalidName("injected at \(stage == "checkpoints/" ? "checkpoints/R1" : stage == "revisions/" ? "revisions/R1.json" : "measurements/R1-S1-measurements.json")")) {
+            try store.saveRevision(PreconRevision(revisionId: "R1"), measurements: files, in: project)
+        }
+        #expect(listing(project.appending(path: "checkpoints")).keys.filter { $0.hasSuffix(".json") }.isEmpty)
+        store.beforeWrite = nil
+        let checkpoint = try store.saveRevision(PreconRevision(revisionId: "R1"), measurements: files, in: project)
+        #expect(try store.resume(from: checkpoint, in: project).1.measurementDigests.keys.sorted() == ["measurements/R1-S1-measurements.json"])
+        #expect(listing(project.appending(path: "measurements")).keys.filter { $0.hasPrefix("R1-") } == ["R1-S1-measurements.json"], "no duplicate files")
+    }
+
+    @Test("A11 guard: once areas are traced, a witness at another scale is refused and the page keeps its scale")
+    func mixedScaleRefused() throws {
+        var page = TakeoffMeasurements(source: SourceRecord(id: "P0", path: "sources/x/plan.pdf", sha256: "", revision: "R1",
+                                                            role: .proposed, pageIndex: 0, sheet: ""))
+        page.calibrationChecks = [CalibrationCheck(axis: .x, coordinateLength: 216, realLength: 12, datum: "plan x"),
+                                  CalibrationCheck(axis: .y, coordinateLength: 180, realLength: 10, datum: "plan y")]
+        let detail = CalibrationCheck(axis: .x, coordinateLength: 216, realLength: 6, datum: "1/2 scale detail") // 36 pt/ft
+        #expect(try page.calibrationChecks(adding: detail).count == 2, "nothing traced yet: recalibrating is allowed")
+        page.counts = [.init(id: "C01", physicalItemId: "F01", pt: [10, 10])]
+        #expect(try page.calibrationChecks(adding: detail).count == 2, "counts don't depend on scale")
+        page.polys = [room("G01", 1, 100, 200, 216, 180)]
+        #expect(throws: TakeoffError.self) { try page.calibrationChecks(adding: detail) }
+        #expect(page.calibration.scale == 18)
+        let refined = CalibrationCheck(axis: .x, coordinateLength: 216.5, realLength: 12, datum: "re-clicked plan x")
+        #expect(try page.calibrationChecks(adding: refined).first { $0.axis == .x }?.coordinateLength == 216.5,
+                "a re-click within click uncertainty is the same scale and is allowed")
+    }
+
     @Test("F14/A09: agreement is judged against click uncertainty in PDF points, not float noise")
     func calibrationTolerance() {
         let x = CalibrationCheck(axis: .x, coordinateLength: 216, realLength: 12, datum: "x")

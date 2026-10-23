@@ -70,6 +70,13 @@ final class TakeoffController: ObservableObject {
     private func setWorkspace(_ url: URL, remember: Bool) {
         attempt {
             store = try PreconProjectStore(root: url)
+            #if DEBUG
+            // Walkthrough seam, debug builds only: PRECONSTRUCTION_TEST_FAIL_SAVE=revisions,checkpoints fails the first
+            // save write reaching each listed stage once, so a partial save can be induced without touching disk state.
+            if let stages = ProcessInfo.processInfo.environment["PRECONSTRUCTION_TEST_FAIL_SAVE"] {
+                store?.beforeWrite = InjectedSaveFailure(stages.split(separator: ",").map(String.init)).check
+            }
+            #endif
             workspace = url
             if remember { UserDefaults.standard.set(url.path, forKey: Self.workspaceKey) }
             refreshProjects()
@@ -216,9 +223,10 @@ final class TakeoffController: ObservableObject {
         let length = abs(axis == .x ? b[0] - a[0] : b[1] - a[1])
         guard length > 0 else { message = "Calibration points must differ along \(axis.rawValue)."; return }
         let datum = "\(axis.rawValue) witness \(a[0]),\(a[1]) to \(b[0]),\(b[1])"
-        mutate {
-            measurements?.calibrationChecks.removeAll { $0.axis == axis }
-            measurements?.calibrationChecks.append(CalibrationCheck(axis: axis, coordinateLength: length, realLength: feet, datum: datum))
+        attempt {
+            guard let checks = try measurements?.calibrationChecks(adding: CalibrationCheck(axis: axis, coordinateLength: length,
+                                                                                          realLength: feet, datum: datum)) else { return }
+            mutate { measurements?.calibrationChecks = checks }
         }
     }
 
@@ -548,6 +556,8 @@ private struct TakeoffReviewPanel: View {
                     Text("X and Y disagree. No scale is used and scaled quantities are withheld; nothing is averaged.")
                         .font(.caption).foregroundStyle(.red)
                 }
+                Text("One scale per page: every area and route here uses it. Details drawn at another scale are not supported (A11); measure them on a separate page.")
+                    .font(.caption).foregroundStyle(.secondary)
             }
             Section("Labels") {
                 TextField("Location", text: binding(\.location))
@@ -633,3 +643,21 @@ private struct TakeoffReviewPanel: View {
 
     private func fmt(_ value: Double, _ digits: Int = 2) -> String { String(format: "%.\(digits)f", value) }
 }
+
+#if DEBUG
+/// Fails the first write reaching each listed stage prefix (e.g. "revisions", "checkpoints"), once per process.
+private final class InjectedSaveFailure: @unchecked Sendable {
+    struct Failure: LocalizedError { var path: String; var errorDescription: String? { "Injected test failure before writing \(path)." } }
+    private let lock = NSLock()
+    private var remaining: [String]
+
+    init(_ stages: [String]) { remaining = stages }
+
+    func check(_ path: String) throws {
+        lock.lock(); defer { lock.unlock() }
+        guard let index = remaining.firstIndex(where: { path.hasPrefix($0) }) else { return }
+        remaining.remove(at: index)
+        throw Failure(path: path)
+    }
+}
+#endif

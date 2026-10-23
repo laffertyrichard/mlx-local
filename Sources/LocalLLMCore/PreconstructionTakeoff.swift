@@ -7,6 +7,7 @@ public enum TakeoffError: Error, Equatable, LocalizedError {
     case duplicateID(String)
     case invalidSign(String)
     case invalidGeometry(String, String)
+    case unsupportedMixedScale(current: Double, proposed: String)
 
     public var errorDescription: String? {
         switch self {
@@ -14,6 +15,10 @@ public enum TakeoffError: Error, Equatable, LocalizedError {
         case .duplicateID(let id): "Duplicate geometry ID \(id)."
         case .invalidSign(let id): "Polygon \(id) sign must be 1 or -1."
         case .invalidGeometry(let id, let reason): "Geometry \(id) rejected: \(reason)."
+        case .unsupportedMixedScale(let current, let proposed):
+            "This page's areas and routes were traced at \(String(format: "%.3f", current)) pt/ft; the new witness gives \(proposed). "
+                + "A differently scaled detail needs its own plane, which is not supported (A11). Measure it on a separate page, "
+                + "or delete this page's areas and routes before recalibrating."
         }
     }
 }

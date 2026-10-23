@@ -40,6 +40,9 @@ public struct ProjectCheckpoint: Codable, Equatable, Sendable {
 
 public struct PreconProjectStore: Sendable {
     public let root: URL
+    /// Test seam: called with each project-relative path just before `saveRevision(_:measurements:in:)` writes it,
+    /// so a test (or the debug app) can fail a save part-way. Nil in normal use.
+    public var beforeWrite: (@Sendable (String) throws -> Void)?
 
     public init(root: URL) throws {
         var isDirectory: ObjCBool = false
@@ -111,10 +114,13 @@ public struct PreconProjectStore: Sendable {
         var paths: [String] = []
         for item in measurements {
             try Self.requireSafeName(item.name)
+            try beforeWrite?("measurements/\(item.name)")
             try writeOnce(item.data, to: project.appending(path: "measurements/\(item.name)"))
             paths.append("measurements/\(item.name)")
         }
+        try beforeWrite?("revisions/\(revision.revisionId).json")
         try writeOnce(try PreconJSON.encoder.encode(revision), to: project.appending(path: "revisions/\(revision.revisionId).json"))
+        try beforeWrite?("checkpoints/\(revision.revisionId)")
         return try saveCheckpoint(for: revision, in: project, measurements: paths, at: date)
     }
 

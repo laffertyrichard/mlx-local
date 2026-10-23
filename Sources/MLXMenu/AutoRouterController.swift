@@ -79,10 +79,9 @@ final class AutoRouterController: ObservableObject {
                 profileRegistry = shipped
             }
         } else { profileRegistry = shipped }
-        let physical = Int64(ProcessInfo.processInfo.physicalMemory)
-        let pressureAware = Int64(Double(Self.availableMemoryEstimate() ?? physical) * 0.80)
         manager = ModelResourceManager(registry: discovered, runtimes: runtimes,
-                                       memoryBudgetBytes: min(Int64(Double(physical) * 0.72), pressureAware))
+                                       memoryBudgetBytes: Self.memoryBudget(),
+                                       budgetProvider: { Self.memoryBudget() })
         try? FileManager.default.createDirectory(at: storageRoot, withIntermediateDirectories: true)
         try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: storageRoot.path)
         let profileEncoder = JSONEncoder(); profileEncoder.outputFormatting = [.prettyPrinted, .sortedKeys]; profileEncoder.dateEncodingStrategy = .iso8601
@@ -273,7 +272,15 @@ final class AutoRouterController: ObservableObject {
         try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
     }
 
-    private static func availableMemoryEstimate() -> Int64? {
+    /// Admission budget for right now. Unchanged formula; the fix is that it is recomputed
+    /// per admission instead of snapshotted at launch.
+    nonisolated static func memoryBudget() -> Int64 {
+        let physical = Int64(ProcessInfo.processInfo.physicalMemory)
+        let pressureAware = Int64(Double(availableMemoryEstimate() ?? physical) * 0.80)
+        return min(Int64(Double(physical) * 0.72), pressureAware)
+    }
+
+    nonisolated private static func availableMemoryEstimate() -> Int64? {
         let process = Process(); process.executableURL = URL(filePath: "/usr/bin/vm_stat")
         let pipe = Pipe(); process.standardOutput = pipe
         guard (try? process.run()) != nil else { return nil }; process.waitUntilExit()

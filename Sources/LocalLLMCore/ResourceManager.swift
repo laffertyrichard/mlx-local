@@ -178,17 +178,26 @@ public actor ModelResourceManager {
     private var loading: [String: Task<Void, Error>] = [:]
     private var reservedMemory: [String: Int64] = [:]
     public let memoryBudgetBytes: Int64
+    // ponytail: budgetProvider re-reads live memory pressure per admission. Without it the
+    // budget is frozen at init, so freeing 30 GB never widens it and filling 30 GB never
+    // narrows it. nil keeps the fixed memoryBudgetBytes (tests, headless tools).
+    private let budgetProvider: (@Sendable () -> Int64)?
     public var stageTimeout: Duration
 
     public init(registry: ModelRegistry, runtimes: [InferenceBackend: any ModelRuntime], memoryBudgetBytes: Int64,
-                stageTimeout: Duration = .seconds(600)) {
-        self.registry = registry; self.runtimes = runtimes; self.memoryBudgetBytes = memoryBudgetBytes; self.stageTimeout = stageTimeout
+                stageTimeout: Duration = .seconds(600), budgetProvider: (@Sendable () -> Int64)? = nil) {
+        self.registry = registry; self.runtimes = runtimes; self.memoryBudgetBytes = memoryBudgetBytes
+        self.budgetProvider = budgetProvider; self.stageTimeout = stageTimeout
     }
+
+    /// Budget as of right now. Costs a `vm_stat` spawn when a provider is set, so callers
+    /// read it once per admission rather than per eviction-loop iteration.
+    public func currentBudgetBytes() -> Int64 { budgetProvider?() ?? memoryBudgetBytes }
 
     public func snapshot(totalMemoryBytes: Int64) -> MachineResources {
         let used = resident.keys.compactMap { registry.model(id: $0)?.approximateMemoryBytes }.reduce(0, +) + reservedMemory.values.reduce(0, +)
         let reclaimable = resident.compactMap { id, state in state.activeRequests == 0 ? registry.model(id: id)?.approximateMemoryBytes : nil }.reduce(0, +)
-        return MachineResources(totalMemoryBytes: totalMemoryBytes, availableMemoryBytes: max(0, memoryBudgetBytes - used),
+        return MachineResources(totalMemoryBytes: totalMemoryBytes, availableMemoryBytes: max(0, currentBudgetBytes() - used),
                                 loadedModelIDs: Set(resident.keys), reclaimableMemoryBytes: reclaimable)
     }
 
@@ -376,7 +385,7 @@ public actor ModelResourceManager {
         throw ResourceError.allFallbacksFailed(stage: stage.kind, errors: errors)
     }
 
-    private func ensureLoaded(_ model: RegisteredModel, runtime: any ModelRuntime,
+    func ensureLoaded(_ model: RegisteredModel, runtime: any ModelRuntime,
                               onEvent: (@Sendable (PipelineEvent) async -> Void)?) async throws -> (milliseconds: Double, cacheHit: Bool) {
         if resident[model.id] != nil { resident[model.id]?.lastUsed = Date(); return (0, true) }
         if let inFlight = loading[model.id] {
@@ -390,7 +399,8 @@ public actor ModelResourceManager {
             }
             return (Date().timeIntervalSince(waitStarted) * 1000, false)
         }
-        while residentMemory() + reservedMemory.values.reduce(0, +) + model.approximateMemoryBytes > memoryBudgetBytes {
+        let budget = currentBudgetBytes()
+        while residentMemory() + reservedMemory.values.reduce(0, +) + model.approximateMemoryBytes > budget {
             guard let victim = resident.filter({ $0.value.activeRequests == 0 }).min(by: { $0.value.lastUsed < $1.value.lastUsed })?.key else {
                 throw ResourceError.memoryBudgetExceeded(modelID: model.id)
             }

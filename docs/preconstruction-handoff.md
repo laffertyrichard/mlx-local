@@ -85,7 +85,7 @@ Roadmap phases 0-2 are implemented. Phase 3 core is implemented against mock run
 
 ## Session 4 (2026-10-23): corrective pass on the three-review findings
 
-Branch `fix/interpretation-integrity` (baseline commit `c1aa1aa` = session 3 work committed unchanged). Each finding has a regression test named with its ID.
+Branch `fix/interpretation-integrity` (baseline commit `c1aa1aa` = session 3 work committed unchanged). Not every finding is closed: A11 (F13) is blocked, touching polygons stay `unavailable`, and the running-app save/retry walkthrough is still open. See "Status by category" below the table.
 
 | ID | Finding | Disposition |
 |---|---|---|
@@ -97,11 +97,11 @@ Branch `fix/interpretation-integrity` (baseline commit `c1aa1aa` = session 3 wor
 | F06 | `VisionFocus` short/NaN/inf rects crashed the process | Fixed: shape, finiteness, size, page bounds and known source checked before any call (`TakeoffError.invalidGeometry`) |
 | F07 | m/in/mm plane areas labelled SF unconverted | Fixed: squared length factor; unknown units still throw |
 | F08 | Same fixture on two pages counted twice | Fixed: `TakeoffMeasurements.quantities(across:)` combines counts per trade by physical item ID only |
-| F09 | Candidate text unchecked against its quote; substring quotes | Fixed: quote tokens must appear consecutively in the source, and every text token must be in the quote |
+| F09 | Candidate text unchecked against its quote; substring quotes | Fixed (final rule after N02/R2-I02/R3-I01): the quote must appear literally in the source, whitespace-normalised, on word boundaries that never split a number, and the candidate's words must appear in the quote in order |
 | F10 | OCR candidates "verified" against the same OCR output | Fixed: with no native text layer every candidate is held, reason names the needed source-image check |
 | F11 | Crop test checked only aspect ratio | Not a code defect (baseline passes); landmark test added for 4 rotations on an offset media box |
 | F12 | A08 overlap/add-back incomplete | Fixed for crossing, nested, repeated and add-back cases; touching pairs stay `unavailable` (not accepted) |
-| F13 | A11 differently scaled details on one page | **Blocked, not accepted.** One calibration per page draft; a second detail scale on the same page is unsupported and must be traced on its own page/source |
+| F13 | A11 differently scaled details on one page | **Blocked, not accepted.** One calibration per page. Before the closeout guard, re-clicking both witnesses on a 1/2-scale detail silently rescaled already-traced plan area (120 to 30 SF, still `candidate`). Now `TakeoffMeasurements.calibrationChecks(adding:)` refuses a witness that disagrees with an established scale once areas or routes are traced, and the calibration panel states the one-scale rule. This is a guard on a known operation, not detection of mixed-scale drawings: a detail traced at the page scale without recalibrating is still measured at the page scale |
 | F14 | 1e-9 calibration tolerance | Fixed: agreement judged by click uncertainty (1 PDF pt per endpoint, scale x 2u / L per witness) plus a separate 1e-9 float term; the longest witness's scale is used, never an average |
 | F16 | Handoff test counts | Reconciled (see Evidence) |
 | N01 | (Codex review of the fixes) duplicate or nested add-backs skipped the overlap check | Fixed: only an add-back's overlap with its surrounding gross polygon is exempt |
@@ -112,19 +112,42 @@ Branch `fix/interpretation-integrity` (baseline commit `c1aa1aa` = session 3 wor
 | R2-I02 | (Codex round 2) a quote could start or end inside a number (`2 in` from `1/2 in`) | Fixed: `/ . ,` between digits is not a word boundary |
 | R3-I01 | (Codex round 3) a leading decimal could still be split (`5 in` from `.5 in`) | Fixed: a `/ . ,` directly before a quote's leading digit always splits; version `precon-interpret-4` |
 
-Tests on this branch (`swift test list`, parameterised tests count once): 71 = model cache 9, takeoff 13, project 8, measurements 5, page frame 1 (4 rotations), interpretation 6, corrective regressions 16, adversarial 13. 36 of these predate session 3.
+### Status by category
 
-Regression evidence: the tests that compile against `c1aa1aa` fail there (F01 import, F02, F06 crash, F07, F09, F12); OpenCode's adversarial suite (`PreconstructionAdversarialTests.swift`, written against the baseline) independently failed for F01, F02, F04, F05, F06, F07, F08, F09, F10.
+- **Fixed defects, with a test that failed before the fix:** F01, F02, F04, F05, F06 (crashed the test process), F07, F08, F09, F10, F12. The tests that compile against `c1aa1aa` fail there (F01 import, F02, F06, F07, F09, F12). OpenCode's adversarial suite, written against the baseline, failed independently for F01, F02, F04, F05, F06, F07, F08, F09 and F10. Codex follow-ups N01-N03, R2-I01, R2-I02 and R3-I01 each had a failing test before their fix.
+- **Fixed without equivalent red-first evidence:** F03 (OpenCode's baseline test documented the gap rather than failing) and F14 (its test uses the new `endpointUncertainty:` parameter, which doesn't exist on the baseline). N04 is a UI wording change with no test.
+- **Not a defect:** F11. The crop code was already correct; only test coverage changed.
+- **Accepted scope:** one calibration per page; candidate output only (never quantities); topology `.passed` only when every pair is decided.
+- **Deferred capabilities (not accepted):** A11 independent detail planes; deciding touching same-sign polygons (needs a Boolean polygon engine); a real interpreter.
+- **Untested:** the save/retry and recovery paths clicked through in the running app (see the checklist in Next steps); native UI rendering in general; any real model, OCR or vision accuracy. Phase 3 is mock-only and its accuracy is unevaluated.
+
+Tests on this branch (`swift test list`, parameterised tests count once): see the closeout section for the current count. At `9c9a6b9`: 71 = model cache 9, takeoff 13, project 8, measurements 5, page frame 1 (4 rotations), interpretation 6, corrective regressions 16, adversarial 13. 36 of these predate session 3.
 
 Next real-model gate (not started, needs explicit authorization and a quiet window): a `PreconInterpreter` adapter over `ModelRuntime`, then a small held-out synthetic evaluation. Phase 3 accuracy is unevaluated.
 
+## Session 5 (2026-10-23): acceptance closeout
+
+- A11 guard: recalibrating a page that already has traced areas or routes is refused when the new witness disagrees with the established scale (`TakeoffError.unsupportedMixedScale`). Counts-only pages, untraced pages and pages whose calibration is already in conflict can still be recalibrated. A11 stays blocked and unaccepted.
+- Save seam: `PreconProjectStore.beforeWrite`, wired from `PRECONSTRUCTION_TEST_FAIL_SAVE` in debug builds only. Core tests use it to fail each write stage; the running-app walkthrough that uses it is still open (Next steps, item 0).
+- Tests on this branch: 85 = the 71 above + 2 corrective (seam stages, A11 guard) + 12 OpenCode closeout tests (`PreconstructionCloseoutTests.swift`: failure/retry at every stage, changed-byte retry, repeated failure, fresh-ID save, mixed-scale refusal matrix).
+- Memory (PR #2) qualifications are on `fix/memory-accounting`: reservations use registry estimates rather than measured peaks; active-model KV growth is not attributed per model; no real-model memory evaluation has been done.
+
 ## Next steps (in order)
 
+0. **Open gate: running-app save/retry walkthrough (about 5 minutes, needs a person).** The closeout session couldn't drive the UI (no Accessibility permission). Use a debug build of this branch and a throwaway data root:
+   1. `PRECONSTRUCTION_WORKSPACE=<empty dir> PRECONSTRUCTION_TEST_FAIL_SAVE=revisions,checkpoints "$(swift build --show-bin-path)/MLXMenu"`. The seam is compiled into debug builds only. It fails the first write into `revisions/`, then the first write into `checkpoints/`, once each.
+   2. Open Takeoff, create project `Walk`, and import `Preconstruction/fixtures/synthetic-plan.pdf`. Cal X: 12 ft from (100,300) to (316,300). Cal Y: 10 ft from (110,200) to (110,380). Trace area 100,200 / 316,200 / 316,380 / 100,380. The panel should show 120 SF.
+   3. Click Save. Expect "Injected test failure before writing revisions/R1.json". `measurements/` holds R1 files; `revisions/` and `checkpoints/` hold none.
+   4. Click Save again without editing. Expect "Injected test failure before writing checkpoints/R1". `revisions/R1.json` now exists; there is still no checkpoint.
+   5. Click Save a third time. Expect "Saved R1 with checkpoint." The project holds exactly one `R1-*-measurements.json` and one `R1-*-plane.json`, with no copies.
+   6. Partial-write case with changed content: quit, relaunch with `PRECONSTRUCTION_TEST_FAIL_SAVE=checkpoints`, and reopen `Walk`. Expect R1 at 120 SF. Trace a 2x3 ft deduction (154,254 / 190,254 / 190,308 / 154,308). Click Save: it fails at `checkpoints/R2`, leaving the R2 measurement and revision files. Delete the deduction (the content changes), then Save. Expect "Saved R3 with checkpoint. An earlier failed save left R2-... for R2 with different content; it was not overwritten." The R2 files stay byte-identical and unreferenced.
+   7. Quit, relaunch without the variable, and reopen `Walk`. Expect "Reopened Rn from verified checkpoint" showing the last saved geometry. The newest checkpoint's `measurement_digests` must list only that revision's files.
+   8. A11 refusal check: on the same page, choose Cal X, enter 6 ft and click the same two points. Expect the "traced at 18.000 pt/ft ... not supported (A11)" message, with the area unchanged.
 1. Done: `build-package.sh` built `dist/MLX-Menu-3.1.1.5.pkg` (unsigned) and `verify-package.sh` passed with the template allowlist. The app extracted from the pkg, launched from cwd `/`, created a project identical to its bundled template. Not installed; installing needs admin rights.
 2. Touching same-sign polygons (rooms sharing a wall) need a Boolean polygon engine to decide; until then that pair stays `unavailable`.
 3. Phase 3 follow-ups (core done, see Session 3):
    - Real interpreter adapter: a `PreconInterpreter` closure over `ModelRuntime` (text model for candidates, single-image OCR/vision model). Apple Vision `VNRecognizeTextRequest` is a candidate for the OCR stage. Not written.
-   - Wire `gate` to `ResourceManager`'s public budget API (read only; that file is dirty user work).
+   - Wire `gate` to `ResourceManager`'s public budget API (the live-memory work is on `fix/memory-accounting`, PR #2).
    - UI: "Read Page" in the takeoff window listing candidates with quote/held reason. Not written.
    - Small held-out local evaluation: needs explicit user authorization and a quiet window, because the Mac runs a trade-pricing workload.
 

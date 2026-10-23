@@ -9,6 +9,7 @@ struct ResourceBudgetTests {
         private var available: Int64?
         let physical: Int64
         private var evictions: [String] = []
+        private var loads: [String] = []
         init(_ available: Int64?, physical: Int64 = 100_000) {
             self.available = available; self.physical = physical
         }
@@ -17,8 +18,10 @@ struct ResourceBudgetTests {
         }
         var unloaded: [String] { lock.lock(); defer { lock.unlock() }; return evictions }
         func set(_ bytes: Int64?) { lock.lock(); defer { lock.unlock() }; available = bytes }
-        func allocate(_ bytes: Int64) {
-            lock.lock(); defer { lock.unlock() }; available = available.map { $0 - bytes }
+        var loaded: [String] { lock.lock(); defer { lock.unlock() }; return loads }
+        func allocate(_ bytes: Int64, id: String) {
+            lock.lock(); defer { lock.unlock() }
+            available = available.map { $0 - bytes }; loads.append(id)
         }
         func release(_ bytes: Int64, id: String) {
             lock.lock(); defer { lock.unlock() }
@@ -28,11 +31,13 @@ struct ResourceBudgetTests {
 
     private actor LoadPause {
         private var started = false
+        private var finished = false
         private var startWaiter: CheckedContinuation<Void, Never>?
-        private var finishWaiter: CheckedContinuation<Void, Never>?
+        private var finishWaiters: [CheckedContinuation<Void, Never>] = []
         func pause() async {
+            if finished { return }
             await withCheckedContinuation { continuation in
-                finishWaiter = continuation; started = true
+                finishWaiters.append(continuation); started = true
                 startWaiter?.resume(); startWaiter = nil
             }
         }
@@ -40,7 +45,11 @@ struct ResourceBudgetTests {
             if started { return }
             await withCheckedContinuation { startWaiter = $0 }
         }
-        func finish() { finishWaiter?.resume(); finishWaiter = nil }
+        func finish() {
+            finished = true
+            for waiter in finishWaiters { waiter.resume() }
+            finishWaiters = []
+        }
     }
 
     private enum LoadFailure: Error { case expected }
@@ -50,12 +59,14 @@ struct ResourceBudgetTests {
         var footprints: [String: Int64] = [:]
         var failures: Set<String> = []
         var pause: LoadPause?
+        var unloadPause: LoadPause?
         func load(model: RegisteredModel) async throws {
             if failures.contains(model.id) { throw LoadFailure.expected }
-            memory.allocate(footprints[model.id] ?? model.approximateMemoryBytes)
+            memory.allocate(footprints[model.id] ?? model.approximateMemoryBytes, id: model.id)
             await pause?.pause()
         }
         func unload(model: RegisteredModel) async {
+            await unloadPause?.pause()
             memory.release(footprints[model.id] ?? model.approximateMemoryBytes, id: model.id)
         }
         func execute(model: RegisteredModel?, stage: RouteStage, input: StageExecutionInput) async throws -> PipelineArtifact {
@@ -76,6 +87,58 @@ struct ResourceBudgetTests {
             let observation = runtime.memory.observation
             return MemoryObservation(availableBytes: observation.available, physicalBytes: observation.physical)
         })
+    }
+
+    @Test("R2-M01: purgeable pages overlapping inactive pages never inflate admission")
+    func overlappingVMStatCategories() async throws {
+        let text = """
+        Mach Virtual Memory Statistics: (page size of 16384 bytes)
+        Pages free:                               65536.
+        Pages inactive:                          262144.
+        Pages speculative:                            0.
+        Pages purgeable:                         262144.
+        """
+        let gib: Int64 = 1_073_741_824
+        let available = try #require(MemoryObservation.availableBytes(fromVMStat: text))
+        #expect(available == 5 * gib)
+        let memory = Memory(available, physical: 64 * gib)
+        let runtime = StubRuntime(memory: memory)
+        let incoming = model("six-gib", 6 * gib)
+        let manager = manager([incoming], runtime: runtime)
+        await #expect(throws: ResourceError.self) {
+            _ = try await manager.ensureLoaded(incoming, runtime: runtime, onEvent: nil)
+        }
+        #expect(memory.loaded.isEmpty)
+    }
+
+    @Test("R2-M02: same-model callers coalesce after a suspended eviction")
+    func sameModelAfterEviction() async throws {
+        let memory = Memory(100_000)
+        let eviction = LoadPause(), loading = LoadPause()
+        let runtime = StubRuntime(memory: memory, footprints: ["a": 1_000, "b": 1_000], unloadPause: eviction)
+        let paused = StubRuntime(memory: memory, footprints: ["b": 1_000], pause: loading)
+        let a = model("a", 50_000), b = model("b", 30_000), c = model("c", 43_000)
+        let manager = manager([a, b, c], runtime: runtime)
+        _ = try await manager.ensureLoaded(a, runtime: runtime, onEvent: nil)
+        let first = Task { try await manager.ensureLoaded(b, runtime: paused, onEvent: nil) }
+        await eviction.waitUntilStarted()
+        let second = Task { try await manager.ensureLoaded(b, runtime: paused, onEvent: nil) }
+        await loading.waitUntilStarted()
+        #expect(await manager.snapshot(totalMemoryBytes: memory.physical).availableMemoryBytes == 42_000)
+        await eviction.finish()
+        // C exceeds the remaining commitment cap while B is loading; no estimates are overwritten.
+        await #expect(throws: ResourceError.self) {
+            _ = try await manager.ensureLoaded(c, runtime: runtime, onEvent: nil)
+        }
+        await loading.finish()
+        _ = try await first.value
+        _ = try await second.value
+        #expect(memory.loaded.filter { $0 == "b" }.count == 1)
+        #expect(!memory.loaded.contains("c"))
+        #expect(memory.unloaded == ["a"])
+        let snapshot = await manager.snapshot(totalMemoryBytes: memory.physical)
+        #expect(snapshot.loadedModelIDs == ["b"])
+        #expect(snapshot.availableMemoryBytes == 42_000)
     }
 
     @Test("sequential loads retain residents without subtracting their footprints twice")

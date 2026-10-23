@@ -179,6 +179,22 @@ public struct MemoryObservation: Sendable {
         self.availableBytes = availableBytes; self.physicalBytes = physicalBytes
     }
 
+    /// Parses vm_stat text without starting a process.
+    public static func availableBytes(fromVMStat text: String) -> Int64? {
+        let pageSize: Int64 = text.split(separator: "\n").first.flatMap { line in
+            line.split(whereSeparator: { !$0.isNumber }).compactMap { Int64($0) }.last
+        } ?? 16_384
+        let labels = ["Pages free", "Pages inactive", "Pages speculative", "Pages purgeable"]
+        var pages: Int64 = 0
+        var observedLabels = Set<String>()
+        for line in text.split(separator: "\n") {
+            guard let label = labels.first(where: { line.hasPrefix($0 + ":") }),
+                  let value = line.split(whereSeparator: { !$0.isNumber }).compactMap({ Int64($0) }).last else { continue }
+            pages += value; observedLabels.insert(label)
+        }
+        return observedLabels.count == labels.count ? pages * pageSize : nil
+    }
+
     // ponytail: retain the 20% live reserve and separate 72% estimated-commitment ceiling.
     public var commitmentCapBytes: Int64 { Int64(Double(physicalBytes) * 0.72) }
     public var usableBytes: Int64? { availableBytes.map { Int64(Double($0) * 0.80) } }

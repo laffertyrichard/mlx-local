@@ -284,18 +284,7 @@ final class AutoRouterController: ObservableObject {
         guard (try? process.run()) != nil else { return nil }; process.waitUntilExit()
         guard process.terminationStatus == 0,
               let text = String(data: pipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) else { return nil }
-        let pageSize: Int64 = text.split(separator: "\n").first.flatMap { line in
-            line.split(whereSeparator: { !$0.isNumber }).compactMap { Int64($0) }.last
-        } ?? 16_384
-        let labels = ["Pages free", "Pages inactive", "Pages speculative", "Pages purgeable"]
-        var pages: Int64 = 0
-        var observedLabels = Set<String>()
-        for line in text.split(separator: "\n") {
-            guard let label = labels.first(where: { line.hasPrefix($0 + ":") }),
-                  let value = line.split(whereSeparator: { !$0.isNumber }).compactMap({ Int64($0) }).last else { continue }
-            pages += value; observedLabels.insert(label)
-        }
-        return observedLabels.count == labels.count ? pages * pageSize : nil
+        return MemoryObservation.availableBytes(fromVMStat: text)
     }
 
     private static func describe(_ event: PipelineEvent) -> String {

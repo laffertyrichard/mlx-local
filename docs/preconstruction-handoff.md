@@ -14,7 +14,7 @@ Branch `feat/package-installer`, on top of `3f6bf3d`:
 
 **Uncommitted user work, do not stage/reset/stash/edit:** `Sources/LocalLLMCore/ResourceManager.swift`, `Sources/MLXMenu/AutoRouterController.swift`, `Tests/LocalLLMCoreTests/ResourceBudgetTests.swift`.
 
-Roadmap phases 0-2 are implemented. Phases 3-8 are not started.
+Roadmap phases 0-2 are implemented. Phase 3 core is implemented against mock runtimes (session 3, uncommitted); no real model wired or evaluated. Phases 4-8 are not started.
 
 ## Code map
 
@@ -47,7 +47,7 @@ Roadmap phases 0-2 are implemented. Phases 3-8 are not started.
 
 ## Evidence
 
-- `nice -n 10 swift test -j 4`: 39/39 pass (12 pre-existing plus 27 preconstruction; the A10 page-frame test runs 4 rotations). Test names carry acceptance IDs (A01-A03, A05-A09, A12-A16, A24, A39, A40).
+- `nice -n 10 swift test -j 4`: 45/45 pass (12 pre-existing, 27 preconstruction takeoff, 6 interpretation; the A10 page-frame test runs 4 rotations). Test names carry acceptance IDs (A01-A03, A05-A09, A12-A24, A39, A40).
 - Package checks from `Preconstruction/`, all passing:
   - `python3 -B tests/test_contracts.py`: 10
   - `python3 -B skills/plan-area-takeoff/scripts/test_geometry.py`: 10
@@ -70,13 +70,28 @@ Roadmap phases 0-2 are implemented. Phases 3-8 are not started.
   - Stale-checkpoint recovery. It lists the reasons and offers "Open Last Valid Checkpoint" or "Start New Revision". Neither changes any file.
 - Tests: 39/39 (`nice -n 10 swift test -j 4`). Package checks still pass.
 
+## Session 3 (2026-10-19, uncommitted): Phase 3 core
+
+- `Sources/LocalLLMCore/PreconstructionInterpretation.swift`, `InterpretationPipeline`:
+  - Per source page: native PDF text (PDFKit) first; empty page goes to OCR, one PNG per call, removed after the call. `VisionFocus` crops (stored frame, rotation-aware via `PageFrame`) go to a vision call.
+  - Model seam is `PreconInterpreter = (InterpretationRequest) async throws -> String` (raw JSON). Decoded with `JSONDecoder`; malformed output gets one retry (`isRetry`), then the unit is `failed`.
+  - Output is `InterpretationCandidate` only. A candidate is held (`heldReason`) when it has no quote, its quote is not verbatim in the page text, or confidence < 0.6. Vision quotes verify against native page text, so on scans every vision candidate is held. Nothing in this file touches calibrations, measurements, quantities or revisions.
+  - Text over `InterpretationBudget.maxInputChars` is chunked by line; chunks past `maxChunks` are listed in `coverage` and the unit is `partial`.
+  - `gate` runs before every model call; a reason defers the unit and stops the run.
+  - Unit ID = digest of pipeline version, profile, confidence threshold, budget, source sha256, page and crop. `complete`/`held`/`partial` units are saved write-once to `interpretation/<id>.json` (`PreconProjectStore.saveInterpretation`) and reused on rerun; any input change gives a new ID. `incomplete`/`failed`/`deferred` are not saved and rerun.
+- `PreconProjectStore.contained` is now internal (was private) so the pipeline reuses the root check.
+- Tests: 6 new in suite "Preconstruction assisted interpretation" (A17, A18/A19, A20, A21/A23, A22, vision crop), all on a scripted mock. `nice -n 10 swift test -j 4`: 45/45.
+- Interpretation units are not bound into `ProjectCheckpoint`; their own digest IDs carry staleness.
+
 ## Next steps (in order)
 
-1. Run `scripts/build-package.sh` and `verify-package.sh` (release build; ask first). Then confirm that Create works from the installed app with no repo cwd.
+1. Done: `build-package.sh` built `dist/MLX-Menu-3.1.1.5.pkg` (unsigned) and `verify-package.sh` passed with the template allowlist. The app extracted from the pkg, launched from cwd `/`, created a project identical to its bundled template. Not installed; installing needs admin rights.
 2. Same-sign overlap needs a Boolean polygon engine; until then topology must stay `unavailable`.
-3. **Phase 3** (assisted interpretation: native PDF text, then sequential crop OCR, then focused vision candidates):
-   - Use mock runtimes first.
-   - Any real model evaluation needs explicit user authorization and a quiet window, because the Mac runs a trade-pricing workload.
+3. Phase 3 follow-ups (core done, see Session 3):
+   - Real interpreter adapter: a `PreconInterpreter` closure over `ModelRuntime` (text model for candidates, single-image OCR/vision model). Apple Vision `VNRecognizeTextRequest` is a candidate for the OCR stage. Not written.
+   - Wire `gate` to `ResourceManager`'s public budget API (read only; that file is dirty user work).
+   - UI: "Read Page" in the takeoff window listing candidates with quote/held reason. Not written.
+   - Small held-out local evaluation: needs explicit user authorization and a quiet window, because the Mac runs a trade-pricing workload.
 
 ## Rules and gotchas
 
@@ -84,4 +99,6 @@ Roadmap phases 0-2 are implemented. Phases 3-8 are not started.
 - Run the package's Python with `python3 -B`, not `-I`. `-I` ignores `PYTHONDONTWRITEBYTECODE` and drops the script directory from `sys.path`, so imports fail and `__pycache__` breaks verification.
 - Run tests with `nice -n 10` on this shared Mac. Never run installs, model loads, benchmarks, the V3 tracer, cloud calls or pushes without asking.
 - Commit only when asked. Commit messages: imperative, about "why", ending with the Co-Authored-By trailer.
+- A corrupt `interpretation/<id>.json` makes every run throw `staleCheckpoint`; files are write-once, so delete it by hand to rerun that unit.
+- `InterpretationUnit.status` is a summary (a budget gap shows `partial` even if candidates are held); check each candidate's `heldReason` and the unit's `coverage`.
 - Unknown values stay nil and are never zero. Model output can only ever be a candidate, never accepted geometry. Approvals bind a snapshot digest.

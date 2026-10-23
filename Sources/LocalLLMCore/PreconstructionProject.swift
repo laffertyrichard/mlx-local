@@ -99,6 +99,24 @@ public struct PreconProjectStore: Sendable {
         return "measurements/\(name)"
     }
 
+    /// Saves a finished interpretation unit under interpretation/<unit id>.json; never overwrites.
+    public func saveInterpretation(_ unit: InterpretationUnit, in project: URL) throws {
+        try Self.requireSafeName(unit.id)
+        _ = try Self.writeNew(try PreconJSON.encoder.encode(unit),
+                              to: try contained(project).appending(path: "interpretation/\(unit.id).json"))
+    }
+
+    /// A saved unit, nil if none. A file that doesn't decode to the same ID is reported, not rerun over.
+    public func interpretation(_ id: String, in project: URL) throws -> InterpretationUnit? {
+        try Self.requireSafeName(id)
+        let url = try contained(project).appending(path: "interpretation/\(id).json")
+        guard FileManager.default.fileExists(atPath: url.path) else { return nil }
+        guard let unit = try? PreconJSON.decoder.decode(InterpretationUnit.self, from: Data(contentsOf: url)), unit.id == id else {
+            throw PreconProjectError.staleCheckpoint(["interpretation/\(id).json unreadable or corrupt"])
+        }
+        return unit
+    }
+
     /// Binds the saved revision bytes (calibration included), every source hash and the listed measurement files.
     public func saveCheckpoint(for revision: PreconRevision, in project: URL, measurements: [String] = [],
                                at date: Date = Date()) throws -> URL {
@@ -147,7 +165,7 @@ public struct PreconProjectStore: Sendable {
         return (try PreconJSON.decoder.decode(PreconRevision.self, from: Data(contentsOf: revisionURL)), checkpoint)
     }
 
-    private func contained(_ url: URL) throws -> URL {
+    func contained(_ url: URL) throws -> URL {
         let resolved = url.resolvingSymlinksInPath().standardizedFileURL
         guard url.isFileURL, resolved.path.hasPrefix(root.path + "/") else { throw PreconProjectError.outsideRoot(url.path) }
         return resolved

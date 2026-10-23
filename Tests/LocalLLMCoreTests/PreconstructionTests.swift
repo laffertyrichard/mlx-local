@@ -454,3 +454,187 @@ struct PreconstructionPageFrameTests {
         #expect(abs(found[0] - mark[0]) < 1 && abs(found[1] - mark[1]) < 1, "rotation \(rotation): display \(display) -> \(found)")
     }
 }
+
+/// Scripted stand-in for a local model: records every call and answers from a closure.
+private actor MockInterpreter {
+    private(set) var calls: [InterpretationRequest] = []
+    private(set) var imagesExisted: [Bool] = []
+    let answer: @Sendable (InterpretationRequest, Int) throws -> String
+
+    init(_ answer: @escaping @Sendable (InterpretationRequest, Int) throws -> String) { self.answer = answer }
+
+    func handle(_ request: InterpretationRequest) throws -> String {
+        calls.append(request)
+        imagesExisted.append(request.image.map { FileManager.default.fileExists(atPath: $0.path) } ?? true)
+        return try answer(request, calls.count)
+    }
+
+    nonisolated var closure: PreconInterpreter { { try await self.handle($0) } }
+}
+
+private struct MockFailure: Error {}
+
+private func candidates(_ items: [(String, String?, Double)]) -> String {
+    let rows = items.map { text, quote, confidence in
+        #"{"kind": "dimension", "text": "\#(text)", "quote": \#(quote.map { "\"\($0)\"" } ?? "null"), "confidence": \#(confidence)}"#
+    }
+    return #"{"candidates": [\#(rows.joined(separator: ","))]}"#
+}
+
+/// Text-free pages, so every page goes to OCR.
+private func blankPDF(pages: Int, in directory: URL) throws -> URL {
+    let url = directory.appending(path: "scan-\(pages).pdf")
+    var box = CGRect(x: 0, y: 0, width: 612, height: 792)
+    let context = try #require(CGContext(url as CFURL, mediaBox: &box, nil))
+    for _ in 0..<pages {
+        context.beginPDFPage(nil); context.stroke(box.insetBy(dx: 36, dy: 36)); context.endPDFPage()
+    }
+    context.closePDF()
+    return url
+}
+
+@Suite("Preconstruction assisted interpretation")
+struct PreconstructionInterpretationTests {
+    private func plan(_ workspace: Workspace) throws -> (URL, [SourceRecord]) {
+        let project = try workspace.project()
+        return (project, try workspace.store.importSource(fixtures.appending(path: "synthetic-plan.pdf"), into: project,
+                                                           role: .proposed, revision: "SYN-R1", sheets: ["A-SYN-1"]))
+    }
+
+    private func scan(_ workspace: Workspace, pages: Int) throws -> (URL, [SourceRecord]) {
+        let project = try workspace.project()
+        return (project, try workspace.store.importSource(try blankPDF(pages: pages, in: workspace.root), into: project,
+                                                           role: .proposed, revision: "R1"))
+    }
+
+    private func fileDigests(_ directory: URL) -> [String: String] {
+        let paths = (FileManager.default.enumerator(atPath: directory.path)?.allObjects as? [String]) ?? []
+        return Dictionary(uniqueKeysWithValues: paths.compactMap { path in
+            (try? StableDigest.file(directory.appending(path: path))).map { (path, $0) }
+        })
+    }
+
+    @Test("A17: native text first; unquoted, invented and low-confidence candidates are held and nothing else is written")
+    func heldCandidates() async throws {
+        let workspace = try Workspace(); defer { workspace.cleanUp() }
+        let (project, sources) = try plan(workspace)
+        var revision = PreconRevision(revisionId: "R1", synthetic: true)
+        revision.sources = sources
+        _ = try workspace.store.saveRevision(revision, in: project)
+        _ = try workspace.store.saveMeasurement(Data("{}".utf8), named: "R1-plane.json", in: project)
+        let checkpoint = try workspace.store.saveCheckpoint(for: revision, in: project, measurements: ["measurements/R1-plane.json"])
+        let before = (fileDigests(project.appending(path: "revisions")), fileDigests(project.appending(path: "measurements")))
+        let mock = MockInterpreter { _, _ in
+            candidates([("12 ft", "12 ft - finished faces", 0.9), ("Room Beta", "ROOM BETA", 0.95),
+                        ("14 ft", nil, 0.9), ("10 ft", "10 ft", 0.3)])
+        }
+        let units = try await InterpretationPipeline(store: workspace.store, project: project, interpreter: mock.closure).run(sources)
+        #expect(units.map(\.stage) == [.nativeText] && units[0].status == .held)
+        #expect(await mock.calls.allSatisfy { $0.image == nil && $0.text != nil })
+        #expect(units[0].candidates.map(\.heldReason) == [nil, "quote not found in source text", "no source quote", "low confidence"])
+        #expect(fileDigests(project.appending(path: "revisions")) == before.0)
+        #expect(fileDigests(project.appending(path: "measurements")) == before.1)
+        #expect(!before.0.isEmpty && !before.1.isEmpty)
+        #expect(try workspace.store.resume(from: checkpoint, in: project).0 == revision)
+    }
+
+    @Test("A18/A19: one image per OCR call; failed and repeating pages stay incomplete with no candidates; IDs survive resume")
+    func sequentialOCR() async throws {
+        let workspace = try Workspace(); defer { workspace.cleanUp() }
+        let (project, sources) = try scan(workspace, pages: 3)
+        // Answers keyed by unit: the pipeline visits pages in order, so map unit IDs to pages first.
+        var pipeline = InterpretationPipeline(store: workspace.store, project: project, interpreter: { _ in "" })
+        let ids = sources.map { pipeline.unitID($0, focus: nil) }
+        let scripted = MockInterpreter { request, _ in
+            if request.stage != .ocr { return candidates([("12 ft", "12 ft", 0.9)]) }
+            switch ids.firstIndex(of: request.unitId) {
+            case 0: return #"{"text": "ROOM ALPHA\n12 ft", "confidence": 0.9}"#
+            case 1: throw MockFailure()
+            default: return #"{"text": "12 ft\n12 ft\n12 ft\n12 ft", "confidence": 0.9}"#
+            }
+        }
+        pipeline.interpreter = scripted.closure
+        let units = try await pipeline.run(sources)
+        #expect(units.map(\.status) == [.complete, .incomplete, .incomplete])
+        #expect(units[1].candidates.isEmpty && units[2].candidates.isEmpty)
+        #expect(units[1].coverage.first?.hasPrefix("page 2 OCR failed") == true)
+        #expect(units[2].coverage == ["page 3 OCR unreadable: repeated output"])
+        let ocrCalls = await scripted.calls.filter { $0.stage == .ocr }
+        #expect(ocrCalls.count == 3 && ocrCalls.allSatisfy { $0.image != nil && $0.text == nil })
+        #expect(await scripted.imagesExisted.allSatisfy { $0 })
+        #expect(ocrCalls.allSatisfy { !FileManager.default.fileExists(atPath: $0.image!.deletingLastPathComponent().path) })
+        let again = try await pipeline.run(sources)
+        #expect(again[0].candidates.map(\.id) == units[0].candidates.map(\.id))
+        #expect(await scripted.calls.count == 4 + 2) // page 1 reused; pages 2 and 3 retried once each
+    }
+
+    @Test("A20: text over budget is chunked and the remainder is recorded as uninterpreted")
+    func inputBudget() async throws {
+        let workspace = try Workspace(); defer { workspace.cleanUp() }
+        let (project, sources) = try plan(workspace)
+        let mock = MockInterpreter { _, _ in candidates([]) }
+        var pipeline = InterpretationPipeline(store: workspace.store, project: project, interpreter: mock.closure)
+        pipeline.budget = InterpretationBudget(maxInputChars: 80, maxChunks: 2, reservedOutputTokens: 256)
+        let units = try await pipeline.run(sources)
+        let calls = await mock.calls
+        #expect(calls.count == 2 && calls.allSatisfy { ($0.text?.count ?? 0) <= 80 && $0.maxOutputTokens == 256 })
+        #expect(units[0].status == .partial)
+        #expect(units[0].coverage.first?.contains("text chunks not interpreted (input budget)") == true)
+    }
+
+    @Test("A21/A23: a busy machine defers before any call; resume reruns only unfinished units")
+    func deferAndResume() async throws {
+        let workspace = try Workspace(); defer { workspace.cleanUp() }
+        let (project, sources) = try scan(workspace, pages: 2)
+        let mock = MockInterpreter { request, _ in
+            request.stage == .ocr ? #"{"text": "12 ft", "confidence": 0.9}"# : candidates([("12 ft", "12 ft", 0.9)])
+        }
+        let allowed = Counter()
+        var pipeline = InterpretationPipeline(store: workspace.store, project: project, interpreter: mock.closure)
+        pipeline.gate = { allowed.next() <= 2 ? nil : "pricing workload active" }
+        let first = try await pipeline.run(sources)
+        #expect(first.map(\.status) == [.complete, .deferred])
+        #expect(first[1].coverage == ["page 2 OCR deferred: pricing workload active"])
+        #expect(await mock.calls.count == 2)
+        pipeline.gate = { nil }
+        let second = try await pipeline.run(sources)
+        #expect(second.map(\.status) == [.complete, .complete] && second[0] == first[0])
+        #expect(await mock.calls.count == 4)
+    }
+
+    @Test("A22: malformed output after one constrained retry fails the unit without saving or a third call")
+    func malformedOutput() async throws {
+        let workspace = try Workspace(); defer { workspace.cleanUp() }
+        let (project, sources) = try plan(workspace)
+        let mock = MockInterpreter { _, _ in "Sure! Here are the dimensions: 12 ft" }
+        let pipeline = InterpretationPipeline(store: workspace.store, project: project, interpreter: mock.closure)
+        let units = try await pipeline.run(sources)
+        #expect(units[0].status == .failed && units[0].candidates.isEmpty)
+        #expect(await mock.calls.map(\.isRetry) == [false, true])
+        #expect(try workspace.store.interpretation(units[0].id, in: project) == nil)
+    }
+
+    @Test("focused vision reads one crop and holds candidates whose quote is not on the page")
+    func visionFocus() async throws {
+        let workspace = try Workspace(); defer { workspace.cleanUp() }
+        let (project, sources) = try plan(workspace)
+        let mock = MockInterpreter { request, _ in
+            request.stage == .vision ? candidates([("10 ft", "10 ft", 0.9), ("14 ft", "14 ft", 0.9)]) : candidates([])
+        }
+        let pipeline = InterpretationPipeline(store: workspace.store, project: project, interpreter: mock.closure)
+        let focus = VisionFocus(sourceId: sources[0].id, rect: [100, 100, 200, 150])
+        let units = try await pipeline.run(sources, focus: [focus])
+        #expect(units.map(\.stage) == [.nativeText, .vision])
+        #expect(units[1].candidates.map(\.heldReason) == [nil, "quote not found in source text"])
+        let document = try #require(PDFDocument(url: project.appending(path: sources[0].path)))
+        let crop = try InterpretationPipeline.png(try #require(document.page(at: 0)), crop: focus.rect)
+        let size = try #require(NSBitmapImageRep(data: crop)).size
+        #expect(abs(size.width / size.height - 200.0 / 150.0) < 0.02)
+    }
+}
+
+private final class Counter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value = 0
+    func next() -> Int { lock.lock(); defer { lock.unlock() }; value += 1; return value }
+}

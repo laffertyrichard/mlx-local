@@ -25,6 +25,8 @@ final class TakeoffController: ObservableObject {
     @Published private(set) var pageImage: NSImage?
     @Published private(set) var pageFrame: PageFrame?
     @Published private(set) var staleReasons: [String] = []
+    /// The newest checkpoint couldn't be decoded at all, as opposed to verifying against changed files.
+    @Published private(set) var checkpointCorrupt = false
     @Published private(set) var dirty = false
     @Published var tool: Tool = .area
     @Published var pending: [[Double]] = []
@@ -105,6 +107,7 @@ final class TakeoffController: ObservableObject {
             message = "Newest checkpoint is stale; nothing was loaded and no file was changed."
         } catch PreconProjectError.corrupt(let path) {
             staleReasons = ["\(path) is unreadable or corrupt"]
+            checkpointCorrupt = true
             message = "Newest checkpoint is corrupt; nothing was loaded and no file was changed."
         } catch {
             message = error.localizedDescription
@@ -137,6 +140,7 @@ final class TakeoffController: ObservableObject {
         pageImage = nil
         pageFrame = nil
         staleReasons = []
+        checkpointCorrupt = false
         dirty = false
         pending = []
     }
@@ -410,8 +414,10 @@ struct PreconstructionView: View {
 
     private var staleRecovery: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Label("Newest checkpoint is stale", systemImage: "exclamationmark.triangle").font(.headline).foregroundStyle(.orange)
-            Text("Saved files no longer match what the checkpoint recorded. Nothing was loaded and nothing will be changed or deleted.")
+            Label(takeoff.checkpointCorrupt ? "Newest checkpoint is corrupt" : "Newest checkpoint is stale", systemImage: "exclamationmark.triangle")
+                .font(.headline).foregroundStyle(.orange)
+            Text((takeoff.checkpointCorrupt ? "The checkpoint file can't be read." : "Saved files no longer match what the checkpoint recorded.")
+                 + " Nothing was loaded and nothing will be changed or deleted.")
                 .font(.callout).foregroundStyle(.secondary)
             ForEach(takeoff.staleReasons, id: \.self) { Text("- \($0)").font(.system(size: 11, design: .monospaced)) }
             HStack {

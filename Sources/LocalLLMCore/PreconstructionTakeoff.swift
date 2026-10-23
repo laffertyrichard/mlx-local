@@ -82,17 +82,25 @@ public enum Takeoff {
             positives.contains { $0.zone == hole.zone && contains(outer: $0.pts, inner: hole.pts) }
                 ? nil : "\(hole.id) is not contained by a gross polygon in zone \(hole.zone)"
         }
+        // `contains` can't tell a polygon on a concave boundary from one outside it, so only strict containment passes.
+        let strictlyInside = { (inner: AreaPlane.Polygon, outers: [AreaPlane.Polygon]) in
+            outers.contains { $0.zone == inner.zone && contains(outer: $0.pts, inner: inner.pts) && !touches($0.pts, inner.pts) }
+        }
+        var undecided = deductions.filter { hole in !failures.contains { $0.hasPrefix("\(hole.id) ") } && !strictlyInside(hole, positives) }
+            .map { "\($0.id) touches its gross boundary; containment is unchecked" }
         // Ownership rule: a positive polygon inside a deduction of its zone is an add-back restoring that region, so
         // its overlap with the gross polygon around it is intended. Any other same-sign overlap double counts, and
         // overlapping deductions have no ownership rule, so both fail.
         let addBacks = positives.filter { p in deductions.contains { $0.zone == p.zone && contains(outer: $0.pts, inner: p.pts) } }
-        var undecided: [String] = []
+        undecided += addBacks.filter { !strictlyInside($0, deductions) }.map { "\($0.id) touches its deduction boundary; containment is unchecked" }
         for group in [positives, deductions] {
             for (i, a) in group.enumerated() {
                 for b in group.dropFirst(i + 1) {
                     let pair = [a, b].sorted { $0.id < $1.id }
-                    if let addBack = pair.first(where: { p in addBacks.contains { $0.id == p.id } }),
-                       let other = pair.first(where: { $0.id != addBack.id }), contains(outer: other.pts, inner: addBack.pts) { continue }
+                    let isAddBack = { (p: AreaPlane.Polygon) in addBacks.contains { $0.id == p.id } }
+                    // Only an add-back's overlap with the gross polygon around it is intended; two add-backs never overlap.
+                    if let addBack = pair.first(where: isAddBack), let other = pair.first(where: { $0.id != addBack.id }),
+                       !isAddBack(other), contains(outer: other.pts, inner: addBack.pts) { continue }
                     switch relation(a.pts, b.pts) {
                     case .overlap: failures.append("\(pair[0].id) overlaps \(pair[1].id)")
                     case .touching: undecided.append("\(pair[0].id) touches \(pair[1].id); shared-boundary overlap is unchecked")
@@ -106,6 +114,12 @@ public enum Takeoff {
     }
 
     private enum Relation { case disjoint, touching, overlap }
+
+    /// Any vertex of one polygon on an edge of the other.
+    private static func touches(_ a: [[Double]], _ b: [[Double]]) -> Bool {
+        let edgesA = zip(a, a.dropFirst() + [a[0]]), edgesB = zip(b, b.dropFirst() + [b[0]])
+        return a.contains { p in edgesB.contains { onSegment($0.0, $0.1, p) } } || b.contains { p in edgesA.contains { onSegment($0.0, $0.1, p) } }
+    }
 
     /// Two simple polygons with no proper crossing and no vertex inside or on the other are disjoint (containment
     /// would put a vertex strictly inside). Any shared boundary point is reported, not guessed.

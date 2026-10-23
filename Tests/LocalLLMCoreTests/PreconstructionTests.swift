@@ -776,6 +776,44 @@ struct PreconstructionCorrectiveTests {
         #expect(adjacent.topology == .unavailable && adjacent.topologyNotes == ["G01 touches G02; shared-boundary overlap is unchecked"])
     }
 
+    @Test("N01/N03 (Codex review): duplicate add-backs and a deduction in a concave notch are never passed")
+    func addBackAndNotchEdgeCases() throws {
+        let gross = room("G01", 1, 0, 0, 10, 10), hole = room("D01", -1, 2, 2, 6, 6)
+        var plane = try plane([gross, hole, room("A01", 1, 3, 3, 2, 2), room("A02", 1, 3, 3, 2, 2)])
+        plane.scale = 1
+        let duplicate = try Takeoff.area(plane)
+        #expect(duplicate.topology == .failed && duplicate.topologyNotes.contains("A01 overlaps A02"))
+        plane.polys = [.init(id: "G01", zone: "Z01", sign: 1, pts: [[0, 0], [10, 0], [10, 10], [7, 10], [7, 3], [3, 3], [3, 10], [0, 10]]),
+                       room("D01", -1, 3, 5, 4, 2)]
+        let notch = try Takeoff.area(plane)
+        #expect(notch.topology != .passed, "every deduction vertex sits on the gross boundary; containment is undecided")
+    }
+
+    @Test("N02 (Codex review): quotes keep dimension punctuation and candidate words keep their order")
+    func quotePunctuationAndOrder() async throws {
+        let workspace = try Workspace(); defer { workspace.cleanUp() }
+        let project = try workspace.project()
+        let lines = ["1/2 in gap", "12 ft x 10 ft"]
+        let directory = workspace.root.appending(path: "gen"); try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let url = directory.appending(path: "text.pdf")
+        var box = CGRect(x: 0, y: 0, width: 612, height: 792)
+        let context = try #require(CGContext(url as CFURL, mediaBox: &box, nil))
+        context.beginPDFPage(nil)
+        for (index, line) in lines.enumerated() {
+            let text = NSAttributedString(string: line, attributes: [.font: NSFont.systemFont(ofSize: 14)])
+            context.textPosition = CGPoint(x: 72, y: 700 - Double(index) * 30)
+            CTLineDraw(CTLineCreateWithAttributedString(text), context)
+        }
+        context.endPDFPage(); context.closePDF()
+        let sources = try workspace.store.importSource(url, into: project, role: .proposed, revision: "R1")
+        let mock = MockInterpreter { _, _ in
+            candidates([("1.2 in", "1.2 in", 0.95), ("10 ft x 12 ft", "12 ft x 10 ft", 0.95), ("1/2 in", "1/2 in", 0.95)])
+        }
+        let units = try await InterpretationPipeline(store: workspace.store, project: project, interpreter: mock.closure).run(sources)
+        #expect(units[0].candidates.map(\.heldReason) == ["quote not found in source text",
+                                                          "candidate text not supported by its quote", nil])
+    }
+
     @Test("F14/A09: agreement is judged against click uncertainty in PDF points, not float noise")
     func calibrationTolerance() {
         let x = CalibrationCheck(axis: .x, coordinateLength: 216, realLength: 12, datum: "x")

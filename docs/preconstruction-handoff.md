@@ -22,7 +22,7 @@ Roadmap phases 0-2 are implemented. Phase 3 core is implemented against mock run
 - `PreconstructionTakeoff.swift`:
   - `Calibration.evaluate` needs both an X and a Y check. If they disagree it returns `.conflict` with a nil scale; it never averages.
   - `Takeoff.area`, `length` and `physicalCount` calculate quantities.
-  - Topology: a deduction must be contained in its gross polygon. Same-sign polygons that cross, nest or repeat fail, except an add-back (a positive polygon inside a deduction of its zone). Overlapping deductions fail (no ownership rule). Pairs that only touch (shared walls) are `.unavailable`. `.passed` only when every pair is decided.
+  - Topology: a deduction must be strictly inside its gross polygon (touching the boundary is `.unavailable`). Same-sign polygons that cross, nest or repeat fail, except an add-back (a positive polygon inside a deduction of its zone). Overlapping deductions fail (no ownership rule). Pairs that only touch (shared walls) are `.unavailable`. `.passed` only when every pair is decided.
   - `AreaPlane.revisionRecords` is the adapter from a plane to revision records.
   - `releasedTotal` / `provisionalTotal` / `releaseBlockers` handle totals and release gating.
 - `PreconstructionMeasurements.swift`:
@@ -104,8 +104,12 @@ Branch `fix/interpretation-integrity` (baseline commit `c1aa1aa` = session 3 wor
 | F13 | A11 differently scaled details on one page | **Blocked, not accepted.** One calibration per page draft; a second detail scale on the same page is unsupported and must be traced on its own page/source |
 | F14 | 1e-9 calibration tolerance | Fixed: agreement judged by click uncertainty (1 PDF pt per endpoint, scale x 2u / L per witness) plus a separate 1e-9 float term; the longest witness's scale is used, never an average |
 | F16 | Handoff test counts | Reconciled (see Evidence) |
+| N01 | (Codex review of the fixes) duplicate or nested add-backs skipped the overlap check | Fixed: only an add-back's overlap with its surrounding gross polygon is exempt |
+| N02 | (Codex) token matching dropped punctuation, so `1.2 in` matched `1/2 in`; candidate words were unordered | Fixed: whitespace-normalised literal match on word boundaries; candidate words must appear in the quote in order |
+| N03 | (Codex) a deduction touching a concave boundary was promoted to `.passed` | Fixed: deductions and add-backs pass containment only when strictly inside; touching stays `unavailable` |
+| N04 | (Codex, P3) corrupt checkpoint shown as "stale" in the recovery panel | Fixed: panel says corrupt |
 
-Tests on this branch (`swift test list`, parameterised tests count once): 68 = model cache 9, takeoff 13, project 8, measurements 5, page frame 1 (4 rotations), interpretation 6, corrective regressions 13, adversarial 13. 36 of these predate session 3.
+Tests on this branch (`swift test list`, parameterised tests count once): 70 = model cache 9, takeoff 13, project 8, measurements 5, page frame 1 (4 rotations), interpretation 6, corrective regressions 15, adversarial 13. 36 of these predate session 3.
 
 Regression evidence: the tests that compile against `c1aa1aa` fail there (F01 import, F02, F06 crash, F07, F09, F12); OpenCode's adversarial suite (`PreconstructionAdversarialTests.swift`, written against the baseline) independently failed for F01, F02, F04, F05, F06, F07, F08, F09, F10.
 

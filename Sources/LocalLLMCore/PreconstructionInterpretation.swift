@@ -250,14 +250,15 @@ extension InterpretationPipeline {
     /// model proves nothing, so every such candidate stays held until a person checks it against the source image.
     private func accept(_ raw: [RawCandidate], verifiedAgainst text: String, independent: Bool,
                         into unit: inout InterpretationUnit) {
-        let sourceTokens = Self.tokens(text)
+        let source = Self.normalized(text)
         for item in raw {
             let quote = item.quote?.trimmingCharacters(in: .whitespacesAndNewlines)
-            let quoteTokens = Self.tokens(quote ?? "")
-            let reason: String? = quoteTokens.isEmpty ? "no source quote"
+            let quoteWords = Self.normalized(quote ?? "").split(separator: " ")
+            let reason: String? = quoteWords.isEmpty ? "no source quote"
                 : !independent ? "no independent text layer (scanned page); verify the quote against the source image"
-                : !Self.containsRun(sourceTokens, quoteTokens) ? "quote not found in source text"
-                : !Set(Self.tokens(item.text)).isSubset(of: quoteTokens) ? "candidate text not supported by its quote"
+                : !Self.containsBounded(source, Self.normalized(quote!)) ? "quote not found in source text"
+                : !Self.isSubsequence(Self.normalized(item.text).split(separator: " "), of: quoteWords)
+                    ? "candidate text not supported by its quote"
                 : (item.confidence ?? 0) < minimumConfidence ? "low confidence" : nil
             let id = "C-\(unit.id.prefix(8))-\(String(format: "%03d", unit.candidates.count + 1))"
             unit.candidates.append(InterpretationCandidate(id: id, kind: item.kind, text: item.text, quote: quote,
@@ -324,15 +325,32 @@ extension InterpretationPipeline {
         return data
     }
 
-    /// Lowercased alphanumeric runs: "12'-6\" CLR" -> ["12", "6", "clr"]. Matching on whole tokens stops "ft" matching "left".
-    static func tokens(_ text: String) -> [String] {
-        text.lowercased().split { !$0.isLetter && !$0.isNumber }.map(String.init)
+    /// Lowercased with whitespace runs collapsed. Punctuation is kept: "1/2" and "1.2" are different dimensions.
+    static func normalized(_ text: String) -> String {
+        text.lowercased().split(whereSeparator: \.isWhitespace).joined(separator: " ")
     }
 
-    /// The quote's tokens appear consecutively in the source.
-    static func containsRun(_ haystack: [String], _ needle: [String]) -> Bool {
-        guard !needle.isEmpty, needle.count <= haystack.count else { return false }
-        return (0...(haystack.count - needle.count)).contains { Array(haystack[$0..<($0 + needle.count)]) == needle }
+    /// Literal match that starts and ends on a word boundary, so "ft" never matches inside "left".
+    static func containsBounded(_ haystack: String, _ needle: String) -> Bool {
+        guard !needle.isEmpty else { return false }
+        var start = haystack.startIndex
+        while let range = haystack.range(of: needle, range: start..<haystack.endIndex) {
+            let before = range.lowerBound == haystack.startIndex ? nil : haystack[haystack.index(before: range.lowerBound)]
+            let after = range.upperBound == haystack.endIndex ? nil : haystack[range.upperBound]
+            if !(before.map { $0.isLetter || $0.isNumber } ?? false), !(after.map { $0.isLetter || $0.isNumber } ?? false) { return true }
+            start = haystack.index(after: range.lowerBound)
+        }
+        return false
+    }
+
+    /// Every candidate word appears in the quote, in the same order: "10 ft x 12 ft" is not "12 ft x 10 ft".
+    static func isSubsequence(_ words: [Substring], of quote: [Substring]) -> Bool {
+        var rest = quote[...]
+        for word in words {
+            guard let index = rest.firstIndex(of: word) else { return false }
+            rest = rest[rest.index(after: index)...]
+        }
+        return !words.isEmpty
     }
 
     /// Line-bounded chunks of at most `max` characters; overlong lines are split hard.

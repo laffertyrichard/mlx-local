@@ -103,6 +103,9 @@ final class TakeoffController: ObservableObject {
         } catch PreconProjectError.staleCheckpoint(let reasons) {
             staleReasons = reasons
             message = "Newest checkpoint is stale; nothing was loaded and no file was changed."
+        } catch PreconProjectError.corrupt(let path) {
+            staleReasons = ["\(path) is unreadable or corrupt"]
+            message = "Newest checkpoint is corrupt; nothing was loaded and no file was changed."
         } catch {
             message = error.localizedDescription
         }
@@ -253,7 +256,7 @@ final class TakeoffController: ObservableObject {
         var working = revision
         let traced = tracedDrafts
         working.calibrations = traced.map(\.calibration)
-        working.quantities = traced.flatMap { $0.quantities() }
+        working.quantities = TakeoffMeasurements.quantities(across: traced)
         working.checks = traced.flatMap { $0.checks() }
         return working
     }
@@ -278,25 +281,33 @@ final class TakeoffController: ObservableObject {
         }
     }
 
+    /// The store writes the checkpoint last, so a failed save is never a completed revision. Retrying unchanged work
+    /// reuses the files already written; if the work changed since, the partial files keep their ID and this save
+    /// moves to a fresh one (which makes any approval stale, since the snapshot digest covers the revision ID).
     func save() {
         guard let store, let project else { return }
         attempt {
-            let saved = workingRevision
-            let id = saved.revisionId
-            var paths: [String] = []
-            for draft in tracedDrafts {
-                let name = "\(id)-\(draft.source.id)"
-                paths.append(try store.saveMeasurement(try PreconJSON.encoder.encode(draft), named: "\(name)-measurements.json", in: project))
-                if let plane = draft.plane {
-                    paths.append(try store.saveMeasurement(try PreconJSON.encoder.encode(plane), named: "\(name)-plane.json", in: project))
-                }
+            do { try saveBundle(store, project) } catch PreconProjectError.alreadyExists(let name) {
+                let abandoned = revision.revisionId
+                mutate { revision.revisionId = nextRevisionID(in: project) }
+                try saveBundle(store, project)
+                message = "Saved \(revision.revisionId) with checkpoint. An earlier failed save left \(name) for \(abandoned) with different content; it was not overwritten."
             }
-            _ = try store.saveRevision(saved, in: project)
-            _ = try store.saveCheckpoint(for: saved, in: project, measurements: paths)
-            revision = saved
-            dirty = false
-            message = "Saved \(id) with checkpoint."
         }
+    }
+
+    private func saveBundle(_ store: PreconProjectStore, _ project: URL) throws {
+        let saved = workingRevision
+        var files: [(name: String, data: Data)] = []
+        for draft in tracedDrafts {
+            let name = "\(saved.revisionId)-\(draft.source.id)"
+            files.append(("\(name)-measurements.json", try PreconJSON.encoder.encode(draft)))
+            if let plane = draft.plane { files.append(("\(name)-plane.json", try PreconJSON.encoder.encode(plane))) }
+        }
+        _ = try store.saveRevision(saved, measurements: files, in: project)
+        revision = saved
+        dirty = false
+        message = "Saved \(saved.revisionId) with checkpoint."
     }
 
     /// Every edit starts a new unsaved revision and makes earlier geometry approvals stale.
@@ -321,9 +332,12 @@ final class TakeoffController: ObservableObject {
         return String(format: "%@%02d", prefix, (used.max() ?? 0) + 1)
     }
 
+    /// Skips IDs used by revisions and by measurement files a failed save may have left without a revision.
     private func nextRevisionID(in project: URL) -> String {
-        let names = (try? FileManager.default.contentsOfDirectory(atPath: project.appending(path: "revisions").path)) ?? []
-        let used = names.compactMap { name in name.hasPrefix("R") && name.hasSuffix(".json") ? Int(name.dropFirst().dropLast(5)) : nil }
+        let names = ["revisions", "measurements"].flatMap {
+            (try? FileManager.default.contentsOfDirectory(atPath: project.appending(path: $0).path)) ?? []
+        }
+        let used = names.compactMap { name in name.wholeMatch(of: /R(\d+)(?:\.json|-.*)/).flatMap { Int($0.1) } }
         return "R\((used.max() ?? 0) + 1)"
     }
 

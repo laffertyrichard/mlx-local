@@ -12,6 +12,8 @@ public enum PreconProjectError: Error, Equatable, LocalizedError {
     case notARegularFile(String)
     case sourceChanged(String)
     case staleCheckpoint([String])
+    /// Bytes that cannot be decoded at all. Distinct from stale: nothing changed underneath, the file itself is bad.
+    case corrupt(String)
 
     public var errorDescription: String? {
         switch self {
@@ -22,6 +24,7 @@ public enum PreconProjectError: Error, Equatable, LocalizedError {
         case .notARegularFile(let path): "Source must be a local regular file, not a link or directory: \(path)."
         case .sourceChanged(let path): "Stored source bytes no longer match the recorded hash: \(path)."
         case .staleCheckpoint(let reasons): "Checkpoint rejected as stale: \(reasons.joined(separator: "; "))."
+        case .corrupt(let path): "File is unreadable or corrupt: \(path)."
         }
     }
 }
@@ -66,7 +69,7 @@ public struct PreconProjectStore: Sendable {
         let data = try Data(contentsOf: file)
         let digest = StableDigest.sha256(data)
         let relative = "sources/\(digest)/\(file.lastPathComponent)"
-        let stored = project.appending(path: relative)
+        let stored = try contained(project.appending(path: relative))
         if FileManager.default.fileExists(atPath: stored.path) {
             guard try StableDigest.file(stored) == digest else { throw PreconProjectError.sourceChanged(relative) }
         } else {
@@ -87,32 +90,56 @@ public struct PreconProjectStore: Sendable {
     public func saveRevision(_ revision: PreconRevision, in project: URL) throws -> URL {
         try Self.requireSafeName(revision.revisionId)
         let project = try contained(project)
-        return try Self.writeNew(try PreconJSON.encoder.encode(revision),
-                                 to: project.appending(path: "revisions/\(revision.revisionId).json"))
+        return try writeNew(try PreconJSON.encoder.encode(revision), to: project.appending(path: "revisions/\(revision.revisionId).json"))
     }
 
     /// Writes a new measurement file (plane or traced geometry); returns its project-relative path.
     public func saveMeasurement(_ data: Data, named name: String, in project: URL) throws -> String {
         try Self.requireSafeName(name)
         let project = try contained(project)
-        _ = try Self.writeNew(data, to: project.appending(path: "measurements/\(name)"))
+        _ = try writeNew(data, to: project.appending(path: "measurements/\(name)"))
         return "measurements/\(name)"
+    }
+
+    /// One save: measurement files, then the revision, then the checkpoint last. Only a checkpoint marks a revision
+    /// complete, so a failure part-way never exposes a completed result. A retry with identical bytes reuses what the
+    /// failed attempt already wrote; different bytes under an existing name still refuse (the caller picks a new ID).
+    public func saveRevision(_ revision: PreconRevision, measurements: [(name: String, data: Data)], in project: URL,
+                             at date: Date = Date()) throws -> URL {
+        try Self.requireSafeName(revision.revisionId)
+        let project = try contained(project)
+        var paths: [String] = []
+        for item in measurements {
+            try Self.requireSafeName(item.name)
+            try writeOnce(item.data, to: project.appending(path: "measurements/\(item.name)"))
+            paths.append("measurements/\(item.name)")
+        }
+        try writeOnce(try PreconJSON.encoder.encode(revision), to: project.appending(path: "revisions/\(revision.revisionId).json"))
+        return try saveCheckpoint(for: revision, in: project, measurements: paths, at: date)
+    }
+
+    private func writeOnce(_ data: Data, to target: URL) throws {
+        let url = try contained(target)
+        if let existing = try? Data(contentsOf: url) {
+            guard existing == data else { throw PreconProjectError.alreadyExists(url.lastPathComponent) }
+            return
+        }
+        _ = try writeNew(data, to: url)
     }
 
     /// Saves a finished interpretation unit under interpretation/<unit id>.json; never overwrites.
     public func saveInterpretation(_ unit: InterpretationUnit, in project: URL) throws {
         try Self.requireSafeName(unit.id)
-        _ = try Self.writeNew(try PreconJSON.encoder.encode(unit),
-                              to: try contained(project).appending(path: "interpretation/\(unit.id).json"))
+        _ = try writeNew(try PreconJSON.encoder.encode(unit), to: try contained(project).appending(path: "interpretation/\(unit.id).json"))
     }
 
     /// A saved unit, nil if none. A file that doesn't decode to the same ID is reported, not rerun over.
     public func interpretation(_ id: String, in project: URL) throws -> InterpretationUnit? {
         try Self.requireSafeName(id)
-        let url = try contained(project).appending(path: "interpretation/\(id).json")
+        let url = try contained(try contained(project).appending(path: "interpretation/\(id).json"))
         guard FileManager.default.fileExists(atPath: url.path) else { return nil }
         guard let unit = try? PreconJSON.decoder.decode(InterpretationUnit.self, from: Data(contentsOf: url)), unit.id == id else {
-            throw PreconProjectError.staleCheckpoint(["interpretation/\(id).json unreadable or corrupt"])
+            throw PreconProjectError.corrupt("interpretation/\(id).json")
         }
         return unit
     }
@@ -121,7 +148,7 @@ public struct PreconProjectStore: Sendable {
     public func saveCheckpoint(for revision: PreconRevision, in project: URL, measurements: [String] = [],
                                at date: Date = Date()) throws -> URL {
         let project = try contained(project)
-        let revisionURL = project.appending(path: "revisions/\(revision.revisionId).json")
+        let revisionURL = try contained(project.appending(path: "revisions/\(revision.revisionId).json"))
         guard try PreconJSON.decoder.decode(PreconRevision.self, from: Data(contentsOf: revisionURL)) == revision else {
             throw PreconProjectError.sourceChanged("revisions/\(revision.revisionId).json differs from the revision being checkpointed")
         }
@@ -138,8 +165,7 @@ public struct PreconProjectStore: Sendable {
                                            revisionSha256: try StableDigest.file(revisionURL), sourceDigests: sources,
                                            measurementDigests: measured, createdAt: date)
         let stamp = Int(date.timeIntervalSince1970 * 1000)
-        return try Self.writeNew(try PreconJSON.encoder.encode(checkpoint),
-                                 to: project.appending(path: "checkpoints/\(revision.revisionId)-\(stamp).json"))
+        return try writeNew(try PreconJSON.encoder.encode(checkpoint), to: project.appending(path: "checkpoints/\(revision.revisionId)-\(stamp).json"))
     }
 
     /// Rejects corrupt checkpoints and any changed schema, revision or source bytes; never silently reuses stale work.
@@ -147,11 +173,11 @@ public struct PreconProjectStore: Sendable {
         let project = try contained(project)
         guard let checkpoint = try? PreconJSON.decoder.decode(ProjectCheckpoint.self,
                                                               from: Data(contentsOf: try contained(checkpointURL))) else {
-            throw PreconProjectError.staleCheckpoint(["checkpoint unreadable or corrupt"])
+            throw PreconProjectError.corrupt(checkpointURL.lastPathComponent)
         }
         var stale: [String] = []
         if checkpoint.schemaVersion != PreconRevision.currentSchemaVersion { stale.append("schema \(checkpoint.schemaVersion)") }
-        let revisionURL = project.appending(path: "revisions/\(checkpoint.revisionId).json")
+        let revisionURL = try contained(project.appending(path: "revisions/\(checkpoint.revisionId).json"))
         if (try? StableDigest.file(revisionURL)) != checkpoint.revisionSha256 { stale.append("revision \(checkpoint.revisionId) changed") }
         for (path, digest) in checkpoint.sourceDigests.sorted(by: { $0.key < $1.key }) {
             let current = try? StableDigest.file(try contained(project.appending(path: path)))
@@ -165,9 +191,25 @@ public struct PreconProjectStore: Sendable {
         return (try PreconJSON.decoder.decode(PreconRevision.self, from: Data(contentsOf: revisionURL)), checkpoint)
     }
 
+    /// Resolves symlinks in every existing ancestor, not only the path as given: `resolvingSymlinksInPath` leaves a
+    /// path whose leaf doesn't exist yet untouched, so a symlinked `measurements/` would otherwise pass. An existing leaf
+    /// that is itself a symlink is refused outright.
+    // ponytail: check-then-write, not openat/O_NOFOLLOW; a concurrent local attacker swapping a directory between the
+    // check and the rename is out of scope for a single-user data root.
     func contained(_ url: URL) throws -> URL {
-        let resolved = url.resolvingSymlinksInPath().standardizedFileURL
-        guard url.isFileURL, resolved.path.hasPrefix(root.path + "/") else { throw PreconProjectError.outsideRoot(url.path) }
+        guard url.isFileURL else { throw PreconProjectError.outsideRoot(url.absoluteString) }
+        var existing = url.standardizedFileURL
+        var missing: [String] = []
+        while (try? FileManager.default.attributesOfItem(atPath: existing.path)) == nil, existing.pathComponents.count > 1 {
+            missing.insert(existing.lastPathComponent, at: 0)
+            existing.deleteLastPathComponent()
+        }
+        if (try? FileManager.default.attributesOfItem(atPath: existing.path)[.type] as? FileAttributeType) == .typeSymbolicLink,
+           existing.resolvingSymlinksInPath() == existing {
+            throw PreconProjectError.outsideRoot(url.path) // dangling link: its target can't be checked
+        }
+        let resolved = missing.reduce(existing.resolvingSymlinksInPath()) { $0.appending(path: $1) }.standardizedFileURL
+        guard resolved.path.hasPrefix(root.path + "/") else { throw PreconProjectError.outsideRoot(url.path) }
         return resolved
     }
 
@@ -178,10 +220,15 @@ public struct PreconProjectStore: Sendable {
     }
 
     /// Atomic write through a temp file, then a rename that fails rather than replace an existing file.
-    private static func writeNew(_ data: Data, to url: URL) throws -> URL {
-        guard !FileManager.default.fileExists(atPath: url.path) else { throw PreconProjectError.alreadyExists(url.lastPathComponent) }
+    /// The target is re-contained here so no caller can write through a symlinked child directory.
+    private func writeNew(_ data: Data, to target: URL) throws -> URL {
+        let url = try contained(target)
+        guard (try? FileManager.default.attributesOfItem(atPath: url.path)) == nil else {
+            throw PreconProjectError.alreadyExists(url.lastPathComponent)
+        }
         let directory = url.deletingLastPathComponent()
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        guard try contained(directory) == directory else { throw PreconProjectError.outsideRoot(directory.path) }
         let temporary = directory.appending(path: ".tmp-\(UUID().uuidString)")
         try data.write(to: temporary, options: .atomic)
         do { try FileManager.default.moveItem(at: temporary, to: url) } catch {

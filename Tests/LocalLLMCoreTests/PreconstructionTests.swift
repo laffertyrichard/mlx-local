@@ -55,7 +55,7 @@ struct PreconstructionTakeoffTests {
         #expect(takeoff.gross == 120)
         #expect(takeoff.deductions == 6)
         #expect(takeoff.net == 114)
-        #expect(takeoff.topology == .unavailable, "containment passed but overlap is unchecked, so topology must not read as passed")
+        #expect(takeoff.topology == .passed, "one gross polygon, its deduction strictly inside: containment and overlap are both decided")
     }
 
     @Test("A06: reversed orientation and large translation keep the same magnitude")
@@ -302,7 +302,7 @@ struct PreconstructionProjectTests {
             try workspace.store.resume(from: checkpoint, in: project)
         }
         try Data("{".utf8).write(to: checkpoint)
-        #expect(throws: PreconProjectError.staleCheckpoint(["checkpoint unreadable or corrupt"])) {
+        #expect(throws: PreconProjectError.corrupt(checkpoint.lastPathComponent)) {
             try workspace.store.resume(from: checkpoint, in: project)
         }
     }
@@ -345,7 +345,7 @@ struct PreconstructionMeasurementTests {
         #expect(measurements.calibration.status == .candidate)
         #expect(measurements.quantities().map(\.value) == [114, 22, 2])
         #expect(measurements.plane?.zones.map(\.id) == ["Z01"])
-        #expect(measurements.checks().map(\.status) == [.passed, .unavailable], "topology is recorded as unavailable, never passed")
+        #expect(measurements.checks().map(\.status) == [.passed, .passed], "topology passes only because every pair is decided")
     }
 
     @Test("A09: a calibration conflict withholds every scaled value instead of averaging")
@@ -555,7 +555,8 @@ struct PreconstructionInterpretationTests {
         }
         pipeline.interpreter = scripted.closure
         let units = try await pipeline.run(sources)
-        #expect(units.map(\.status) == [.complete, .incomplete, .incomplete])
+        #expect(units.map(\.status) == [.held, .incomplete, .incomplete], "OCR-only candidates are held, never offered")
+        #expect(units[0].candidates.allSatisfy { $0.heldReason?.hasPrefix("no independent text layer") == true })
         #expect(units[1].candidates.isEmpty && units[2].candidates.isEmpty)
         #expect(units[1].coverage.first?.hasPrefix("page 2 OCR failed") == true)
         #expect(units[2].coverage == ["page 3 OCR unreadable: repeated output"])
@@ -593,12 +594,12 @@ struct PreconstructionInterpretationTests {
         var pipeline = InterpretationPipeline(store: workspace.store, project: project, interpreter: mock.closure)
         pipeline.gate = { allowed.next() <= 2 ? nil : "pricing workload active" }
         let first = try await pipeline.run(sources)
-        #expect(first.map(\.status) == [.complete, .deferred])
+        #expect(first.map(\.status) == [.held, .deferred])
         #expect(first[1].coverage == ["page 2 OCR deferred: pricing workload active"])
         #expect(await mock.calls.count == 2)
         pipeline.gate = { nil }
         let second = try await pipeline.run(sources)
-        #expect(second.map(\.status) == [.complete, .complete] && second[0] == first[0])
+        #expect(second.map(\.status) == [.held, .held] && second[0] == first[0])
         #expect(await mock.calls.count == 4)
     }
 
@@ -637,4 +638,255 @@ private final class Counter: @unchecked Sendable {
     private let lock = NSLock()
     private var value = 0
     func next() -> Int { lock.lock(); defer { lock.unlock() }; value += 1; return value }
+}
+
+// MARK: - Corrective pass regressions (one test per review finding; IDs match docs/preconstruction-handoff.md)
+
+private func importedPlan(_ workspace: Workspace) throws -> (URL, [SourceRecord]) {
+    let project = try workspace.project()
+    return (project, try workspace.store.importSource(fixtures.appending(path: "synthetic-plan.pdf"), into: project,
+                                                       role: .proposed, revision: "SYN-R1", sheets: ["A-SYN-1"]))
+}
+
+private func listing(_ directory: URL) -> [String: String] {
+    let paths = (FileManager.default.enumerator(atPath: directory.path)?.allObjects as? [String]) ?? []
+    return Dictionary(uniqueKeysWithValues: paths.map { ($0, (try? StableDigest.file(directory.appending(path: $0))) ?? "dir") })
+}
+
+@Suite("Preconstruction corrective regressions")
+struct PreconstructionCorrectiveTests {
+    private func room(_ id: String, _ sign: Int, _ x: Double, _ y: Double, _ w: Double, _ h: Double) -> AreaPlane.Polygon {
+        .init(id: id, zone: "Z01", sign: sign, pts: [[x, y], [x + w, y], [x + w, y + h], [x, y + h]])
+    }
+
+    private func plane(_ polys: [AreaPlane.Polygon]) throws -> AreaPlane {
+        var plane = try fixture(AreaPlane.self, "area-plane.json")
+        plane.polys = polys
+        return plane
+    }
+
+    @Test("F01/A03: a symlinked child directory cannot carry a write outside the root",
+          arguments: ["measurements", "revisions", "checkpoints", "interpretation"])
+    func symlinkedChild(child: String) throws {
+        let workspace = try Workspace(); defer { workspace.cleanUp() }
+        let project = try workspace.project()
+        let outside = FileManager.default.temporaryDirectory.appending(path: "Outside-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: outside, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: outside) }
+        try Data("keep".utf8).write(to: outside.appending(path: "keep.txt"))
+        let before = listing(outside)
+        try? FileManager.default.removeItem(at: project.appending(path: child))
+        try FileManager.default.createSymbolicLink(at: project.appending(path: child), withDestinationURL: outside)
+        let unit = InterpretationUnit(id: "U1", sourceId: "S", pageIndex: 0, stage: .nativeText, status: .complete)
+        #expect(throws: PreconProjectError.self) {
+            switch child {
+            case "interpretation": try workspace.store.saveInterpretation(unit, in: project)
+            default: _ = try workspace.store.saveRevision(PreconRevision(revisionId: "R1"),
+                                                          measurements: [("R1-m.json", Data("{}".utf8))], in: project)
+            }
+        }
+        #expect(listing(outside) == before, "nothing outside the root was created or changed")
+    }
+
+    @Test("F01/A03: a symlinked sources/<hash> directory cannot receive an import")
+    func symlinkedSourceDirectory() throws {
+        let workspace = try Workspace(); defer { workspace.cleanUp() }
+        let project = try workspace.project()
+        let outside = FileManager.default.temporaryDirectory.appending(path: "Outside-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: outside, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: outside) }
+        let pdf = fixtures.appending(path: "synthetic-plan.pdf")
+        try FileManager.default.createDirectory(at: project.appending(path: "sources"), withIntermediateDirectories: true)
+        try FileManager.default.createSymbolicLink(at: project.appending(path: "sources/\(try StableDigest.file(pdf))"),
+                                                   withDestinationURL: outside)
+        #expect(throws: PreconProjectError.self) {
+            try workspace.store.importSource(pdf, into: project, role: .proposed, revision: "R1")
+        }
+        #expect(listing(outside).isEmpty)
+    }
+
+    @Test("F04: a save that fails at any stage leaves no checkpoint, and an identical retry completes",
+          arguments: ["measurements", "revisions", "checkpoints"])
+    func interruptedSave(stage: String) throws {
+        let workspace = try Workspace(); defer { workspace.cleanUp() }
+        let project = try workspace.project()
+        let revision = PreconRevision(revisionId: "R1")
+        let files = [(name: "R1-S1-measurements.json", data: Data(#"{"a": 1}"#.utf8))]
+        let blocked = project.appending(path: stage)
+        try FileManager.default.createDirectory(at: blocked, withIntermediateDirectories: true)
+        try FileManager.default.setAttributes([.posixPermissions: 0o555], ofItemAtPath: blocked.path)
+        #expect(throws: (any Error).self) { try workspace.store.saveRevision(revision, measurements: files, in: project) }
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: blocked.path)
+        #expect(listing(project.appending(path: "checkpoints")).keys.filter { $0.hasSuffix(".json") }.isEmpty,
+                "a failed save must not publish a completed result")
+
+        let checkpoint = try workspace.store.saveRevision(revision, measurements: files, in: project)
+        #expect(try workspace.store.resume(from: checkpoint, in: project).0 == revision)
+        #expect(throws: PreconProjectError.alreadyExists("R1-S1-measurements.json")) {
+            try workspace.store.saveRevision(revision, measurements: [(files[0].name, Data("{}".utf8))], in: project)
+        }
+    }
+
+    @Test("F07: metre, inch and millimetre planes convert to SF with the squared factor; an unknown unit is refused",
+          arguments: [("m", 10.763910416709722), ("in", 1.0 / 144), ("mm", 1.0763910416709722e-5), ("ft", 1.0)])
+    func areaUnits(unit: String, squareFeet: Double) throws {
+        var unitSquare = try plane([room("G01", 1, 0, 0, 18, 18)])
+        unitSquare.lengthUnit = unit
+        let (_, quantity) = try unitSquare.revisionRecords(sourceId: "S01", calibrationId: "C", planeId: "P", quantityId: "Q",
+                                                           physicalItemId: "F", trade: "flooring", location: "Room")
+        #expect(quantity.unit == .SF)
+        #expect(abs(try #require(quantity.value) - squareFeet) <= squareFeet * 1e-12)
+        unitSquare.lengthUnit = "yd"
+        #expect(throws: TakeoffError.self) {
+            try unitSquare.revisionRecords(sourceId: "S01", calibrationId: "C", planeId: "P", quantityId: "Q",
+                                           physicalItemId: "F", trade: "flooring", location: "Room")
+        }
+    }
+
+    @Test("F08/A13: one fixture seen on two pages is 1 EA; identical-looking fixtures with different IDs stay 2")
+    func crossPageCounts() throws {
+        func page(_ id: String, _ index: Int, _ items: [String]) -> TakeoffMeasurements {
+            var draft = TakeoffMeasurements(source: SourceRecord(id: id, path: "sources/x/plan.pdf", sha256: "", revision: "R1",
+                                                                 role: .proposed, pageIndex: index, sheet: ""))
+            draft.counts = items.enumerated().map { .init(id: "C0\($0.offset + 1)", physicalItemId: $0.element, pt: [50, 50]) }
+            return draft
+        }
+        var revision = PreconRevision(revisionId: "R1")
+        revision.quantities = TakeoffMeasurements.quantities(across: [page("P0", 0, ["F01", "F02"]), page("P1", 1, ["F01"])])
+        #expect(revision.provisionalTotal(.EA) == 2)
+        #expect(revision.quantities.count == 1 && revision.quantities[0].geometryRefs == ["P0/C01", "P0/C02", "P1/C01"])
+        revision.quantities = TakeoffMeasurements.quantities(across: [page("P0", 0, ["F01"]), page("P1", 1, ["F02"])])
+        #expect(revision.provisionalTotal(.EA) == 2, "same position and look, different physical IDs")
+    }
+
+    @Test("F12/A08: same-sign overlaps fail, add-backs inside a deduction restore area, touching stays unavailable")
+    func overlapAndAddBack() throws {
+        let gross = room("G01", 1, 100, 200, 216, 180), island = room("D01", -1, 154, 254, 36, 54)
+        let crossing = try Takeoff.area(try plane([gross, room("G02", 1, 280, 300, 100, 100), island]))
+        #expect(crossing.topology == .failed && crossing.topologyNotes.contains("G01 overlaps G02"))
+        let twice = try Takeoff.area(try plane([gross, room("G02", 1, 100, 200, 216, 180)]))
+        #expect(twice.topology == .failed, "the same outline traced twice double counts")
+        let deductions = try Takeoff.area(try plane([gross, island, room("D02", -1, 170, 290, 36, 36)]))
+        #expect(deductions.topology == .failed && deductions.topologyNotes.contains("D01 overlaps D02"))
+
+        let addBack = try Takeoff.area(try plane([gross, island, room("A01", 1, 163, 272, 18, 18)]))
+        #expect(addBack.topology == .passed)
+        #expect(addBack.net == 120 - 6 + 1)
+        let adjacent = try Takeoff.area(try plane([gross, room("G02", 1, 316, 200, 90, 180)]))
+        #expect(adjacent.topology == .unavailable && adjacent.topologyNotes == ["G01 touches G02; shared-boundary overlap is unchecked"])
+    }
+
+    @Test("F14/A09: agreement is judged against click uncertainty in PDF points, not float noise")
+    func calibrationTolerance() {
+        let x = CalibrationCheck(axis: .x, coordinateLength: 216, realLength: 12, datum: "x")
+        let nearY = CalibrationCheck(axis: .y, coordinateLength: 180.9, realLength: 10, datum: "y, half a point per end off")
+        #expect(Calibration.evaluate([x, nearY]).status == .candidate)
+        #expect(Calibration.evaluate([x, nearY]).scale == 18, "longest witness, never the average")
+        #expect(Calibration.evaluate([x, nearY], endpointUncertainty: 0).status == .conflict, "without click allowance only float noise passes")
+        let farY = CalibrationCheck(axis: .y, coordinateLength: 200, realLength: 10, datum: "y")
+        #expect(Calibration.evaluate([x, farY]).status == .conflict)
+        let shortY = CalibrationCheck(axis: .y, coordinateLength: 19, realLength: 1, datum: "1 ft witness")
+        #expect(Calibration.evaluate([x, shortY]).status == .candidate, "a short witness is less certain, so it binds less")
+    }
+
+    @Test("F11/A10: a crop renders the region at the requested stored coordinates on rotated and offset pages",
+          arguments: [0, 90, 180, 270])
+    func cropLandmark(rotation: Int) throws {
+        let directory = FileManager.default.temporaryDirectory.appending(path: "Crop-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        var box = CGRect(x: 50, y: 100, width: 612, height: 792)
+        let raw = directory.appending(path: "raw.pdf")
+        let context = try #require(CGContext(raw as CFURL, mediaBox: &box, nil))
+        context.beginPDFPage(nil)
+        context.setFillColor(CGColor(gray: 0, alpha: 1))
+        context.fill(CGRect(x: box.minX + 400 - 6, y: box.maxY - 150 - 6, width: 12, height: 12)) // landmark at stored (400, 150)
+        context.endPDFPage(); context.closePDF()
+        let document = try #require(PDFDocument(url: raw))
+        let page = try #require(document.page(at: 0))
+        page.rotation = rotation
+
+        func darkCentroid(_ crop: [Double]) throws -> [Double]? {
+            let rep = try #require(NSBitmapImageRep(data: try InterpretationPipeline.png(page, crop: crop)))
+            var (sx, sy, n) = (0.0, 0.0, 0.0)
+            for y in 0..<rep.pixelsHigh { for x in 0..<rep.pixelsWide where (rep.colorAt(x: x, y: y)?.brightnessComponent ?? 1) < 0.5 {
+                sx += Double(x) + 0.5; sy += Double(y) + 0.5; n += 1
+            } }
+            return n == 0 ? nil : [sx / n / Double(rep.pixelsWide), sy / n / Double(rep.pixelsHigh)]
+        }
+        // Landmark off-centre in the crop (3/4 across, 1/4 down in the stored frame), so a mirrored or rotated crop shows.
+        let centroid = try #require(try darkCentroid([370, 140, 40, 40]))
+        let expected = switch rotation {
+        case 90: [0.75, 0.75]
+        case 180: [0.25, 0.75]
+        case 270: [0.25, 0.25]
+        default: [0.75, 0.25]
+        }
+        #expect(abs(centroid[0] - expected[0]) < 0.08 && abs(centroid[1] - expected[1]) < 0.08, "rotation \(rotation): \(centroid)")
+        #expect(try darkCentroid([100, 400, 40, 40]) == nil, "a crop elsewhere holds no landmark")
+        withExtendedLifetime(document) {}
+    }
+
+    @Test("F02/A24: a changed source PDF is caught even when a saved unit exists")
+    func staleSavedUnit() async throws {
+        let workspace = try Workspace(); defer { workspace.cleanUp() }
+        let (project, sources) = try importedPlan(workspace)
+        let mock = MockInterpreter { _, _ in candidates([("10 ft", "10 ft", 0.9)]) }
+        let pipeline = InterpretationPipeline(store: workspace.store, project: project, interpreter: mock.closure)
+        _ = try await pipeline.run(sources)
+        let stored = project.appending(path: sources[0].path)
+        try FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: stored.path)
+        let handle = try FileHandle(forWritingTo: stored); try handle.seekToEnd(); try handle.write(contentsOf: Data("%".utf8)); try handle.close()
+        await #expect(throws: PreconProjectError.sourceChanged(sources[0].path)) { try await pipeline.run(sources) }
+    }
+
+    @Test("F03/A24: a prompt change gives new unit IDs, so units made under the old prompt are not reused")
+    func promptInCacheIdentity() async throws {
+        let workspace = try Workspace(); defer { workspace.cleanUp() }
+        let (project, sources) = try importedPlan(workspace)
+        let mock = MockInterpreter { _, _ in candidates([("10 ft", "10 ft", 0.9)]) }
+        var pipeline = InterpretationPipeline(store: workspace.store, project: project, interpreter: mock.closure)
+        let first = try await pipeline.run(sources)
+        pipeline.candidateInstruction += " Also list door tags."
+        let second = try await pipeline.run(sources)
+        #expect(first[0].id != second[0].id)
+        #expect(await mock.calls.count == 2)
+        #expect(await mock.calls.last?.instruction == pipeline.candidateInstruction)
+    }
+
+    @Test("F05/A24: a corrupt saved unit is reported as corrupt, not stale")
+    func corruptUnit() async throws {
+        let workspace = try Workspace(); defer { workspace.cleanUp() }
+        let (project, sources) = try importedPlan(workspace)
+        let pipeline = InterpretationPipeline(store: workspace.store, project: project, interpreter: { _ in candidates([]) })
+        let id = pipeline.unitID(sources[0], focus: nil)
+        try FileManager.default.createDirectory(at: project.appending(path: "interpretation"), withIntermediateDirectories: true)
+        try Data("{".utf8).write(to: project.appending(path: "interpretation/\(id).json"))
+        await #expect(throws: PreconProjectError.corrupt("interpretation/\(id).json")) { try await pipeline.run(sources) }
+    }
+
+    @Test("F06: malformed focus rects are refused with a reason before any model call",
+          arguments: [[1.0, 2, 3], [.nan, 0, 10, 10], [0, 0, .infinity, 10], [0, 0, 0, 10], [10, 10, 10, -5], [600, 780, 100, 100], [-1, 0, 10, 10]])
+    func malformedFocus(rect: [Double]) async throws {
+        let workspace = try Workspace(); defer { workspace.cleanUp() }
+        let (project, sources) = try importedPlan(workspace)
+        let mock = MockInterpreter { _, _ in candidates([]) }
+        let pipeline = InterpretationPipeline(store: workspace.store, project: project, interpreter: mock.closure)
+        await #expect(throws: TakeoffError.self) { try await pipeline.run([], focus: [VisionFocus(sourceId: sources[0].id, rect: rect)]) }
+        await #expect(throws: TakeoffError.self) { try await pipeline.run(sources, focus: [VisionFocus(sourceId: sources[0].id, rect: rect)]) }
+        #expect(await mock.calls.filter { $0.stage == .vision }.isEmpty)
+    }
+
+    @Test("F09/A17: a valid quote must support the candidate text, and must match whole source tokens")
+    func quoteSupport() async throws {
+        let workspace = try Workspace(); defer { workspace.cleanUp() }
+        let (project, sources) = try importedPlan(workspace)
+        let mock = MockInterpreter { _, _ in
+            candidates([("Room Beta", "12 ft", 0.9), ("12 ft", "ft", 0.9), ("finish", "inish", 0.9), ("12 ft", "12 ft - finished", 0.9)])
+        }
+        let units = try await InterpretationPipeline(store: workspace.store, project: project, interpreter: mock.closure).run(sources)
+        #expect(units[0].candidates.map(\.heldReason) == ["candidate text not supported by its quote",
+                                                          "candidate text not supported by its quote",
+                                                          "quote not found in source text", nil])
+    }
 }

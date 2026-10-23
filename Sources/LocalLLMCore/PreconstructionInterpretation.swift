@@ -69,7 +69,8 @@ public struct VisionFocus: Sendable {
 }
 
 public struct InterpretationPipeline: Sendable {
-    public static let version = "precon-interpret-1"
+    /// Bump when code-side rules change (quote support, OCR checks, chunking). Prompts are digested separately.
+    public static let version = "precon-interpret-2"
     public var store: PreconProjectStore
     public var project: URL
     public var interpreter: PreconInterpreter
@@ -78,6 +79,9 @@ public struct InterpretationPipeline: Sendable {
     public var minimumConfidence = 0.6
     /// Checked before every model call. A non-nil reason (memory, pricing workload) defers the run.
     public var gate: @Sendable () -> String? = { nil }
+    /// Part of every unit ID, so a prompt edit can never reuse units produced under the old prompt.
+    public var ocrInstruction = Self.defaultOCRInstruction
+    public var candidateInstruction = Self.defaultCandidateInstruction
 
     public init(store: PreconProjectStore, project: URL, interpreter: @escaping PreconInterpreter) {
         self.store = store; self.project = project; self.interpreter = interpreter
@@ -85,12 +89,19 @@ public struct InterpretationPipeline: Sendable {
 
     /// Runs sources in order, then focus crops. Saved units are reused; the run stops at the first deferral.
     public func run(_ sources: [SourceRecord], focus: [VisionFocus] = []) async throws -> [InterpretationUnit] {
-        let jobs: [(SourceRecord, VisionFocus?)] = sources.map { ($0, nil) } + focus.compactMap { item in
-            sources.first { $0.id == item.sourceId }.map { ($0, item) }
+        for item in focus { try item.validate() }
+        let jobs: [(SourceRecord, VisionFocus?)] = try sources.map { ($0, nil) } + focus.map { item in
+            guard let source = sources.first(where: { $0.id == item.sourceId }) else {
+                throw TakeoffError.invalidGeometry("focus \(item.sourceId)", "names a source that is not in this run")
+            }
+            return (source, item)
         }
         var units: [InterpretationUnit] = []
+        var verified = Set<String>()
         for (source, focus) in jobs {
             try Task.checkCancellation()
+            // Current bytes are checked before a saved unit is trusted, not only before a fresh run.
+            if verified.insert(source.path).inserted { _ = try sourceURL(source) }
             let id = unitID(source, focus: focus)
             if let saved = try store.interpretation(id, in: project) { units.append(saved); continue }
             let unit = try await interpret(source, focus: focus, id: id)
@@ -104,7 +115,8 @@ public struct InterpretationPipeline: Sendable {
     /// Any change to source bytes, page, crop, pipeline, profile or budget yields a new ID, so stale units never match.
     func unitID(_ source: SourceRecord, focus: VisionFocus?) -> String {
         let crop = focus.map { $0.rect.map { String($0) }.joined(separator: ",") } ?? "page"
-        let key = [Self.version, profileDigest, String(minimumConfidence), String(budget.maxInputChars),
+        let prompts = StableDigest.sha256(Data((ocrInstruction + "\u{0}" + candidateInstruction).utf8))
+        let key = [Self.version, prompts, profileDigest, String(minimumConfidence), String(budget.maxInputChars),
                    String(budget.maxChunks), String(budget.reservedOutputTokens), source.sha256,
                    String(source.pageIndex), crop].joined(separator: "|")
         return StableDigest.sha256(Data(key.utf8))
@@ -119,6 +131,11 @@ public struct InterpretationPipeline: Sendable {
         var unit = InterpretationUnit(id: id, sourceId: source.id, pageIndex: source.pageIndex,
                                       stage: focus == nil ? (native.isEmpty ? .ocr : .nativeText) : .vision, status: .complete)
         if let focus {
+            let bounds = page.bounds(for: .mediaBox)
+            guard focus.rect[0] >= 0, focus.rect[1] >= 0, focus.rect[0] + focus.rect[2] <= bounds.width,
+                  focus.rect[1] + focus.rect[3] <= bounds.height else {
+                throw TakeoffError.invalidGeometry("focus \(focus.sourceId)", "crop \(focus.rect) is outside the \(bounds.width)x\(bounds.height) page")
+            }
             await readVision(page, crop: focus.rect, pageText: native, into: &unit)
             withExtendedLifetime(document) {}
             return unit
@@ -128,17 +145,32 @@ public struct InterpretationPipeline: Sendable {
             guard let ocr = await readOCR(page, into: &unit) else { return unit }
             text = ocr
         }
-        await extract(text, into: &unit)
+        await extract(text, independent: !native.isEmpty, into: &unit)
         withExtendedLifetime(document) {}
         return unit
     }
 
     /// The caller keeps the document alive: a PDFPage whose document is freed renders blank.
     private func loadDocument(_ source: SourceRecord) throws -> PDFDocument {
-        let url = try store.contained(project.appending(path: source.path))
-        guard try StableDigest.file(url) == source.sha256 else { throw PreconProjectError.sourceChanged(source.path) }
+        let url = try sourceURL(source)
         guard let document = PDFDocument(url: url) else { throw PreconProjectError.sourceChanged("\(source.path) is not a readable PDF") }
         return document
+    }
+
+    private func sourceURL(_ source: SourceRecord) throws -> URL {
+        let url = try store.contained(project.appending(path: source.path))
+        guard try StableDigest.file(url) == source.sha256 else { throw PreconProjectError.sourceChanged(source.path) }
+        return url
+    }
+}
+
+extension VisionFocus {
+    /// Shape, finiteness and size before anything indexes or renders the rect; page bounds are checked per page.
+    func validate() throws {
+        let id = "focus \(sourceId)"
+        guard rect.count == 4 else { throw TakeoffError.invalidGeometry(id, "rect needs x, y, width, height; got \(rect.count) numbers") }
+        guard rect.allSatisfy(\.isFinite) else { throw TakeoffError.invalidGeometry(id, "rect has a non-finite number") }
+        guard rect[2] > 0, rect[3] > 0 else { throw TakeoffError.invalidGeometry(id, "width and height must be positive") }
     }
 }
 
@@ -155,8 +187,8 @@ extension InterpretationPipeline {
         var bbox: [Double]?
     }
 
-    static let ocrInstruction = #"Transcribe all text in this single image. Return only JSON: {"text": string, "confidence": number 0-1}."#
-    static let candidateInstruction = """
+    public static let defaultOCRInstruction = #"Transcribe all text in this single image. Return only JSON: {"text": string, "confidence": number 0-1}."#
+    public static let defaultCandidateInstruction = """
         List dimensions, rooms, materials, notes and sheet IDs stated in the input. Do not infer anything not written. \
         Return only JSON: {"candidates": [{"kind": "dimension|room|material|note|sheet", "text": string, \
         "quote": exact source text, "confidence": number 0-1, "bbox": [x, y, w, h] or null}]}.
@@ -168,7 +200,7 @@ extension InterpretationPipeline {
         let result: OCRResult?
         do {
             result = try await withImage(page, crop: nil) { image in
-                try await ask(OCRResult.self, unit: unit, stage: .ocr, instruction: Self.ocrInstruction, text: nil, image: image)
+                try await ask(OCRResult.self, unit: unit, stage: .ocr, instruction: ocrInstruction, text: nil, image: image)
             }
         } catch {
             mark(&unit, error, label: "\(label) OCR")
@@ -183,19 +215,19 @@ extension InterpretationPipeline {
     }
 
     /// Bounded chunks in order; whatever exceeds the budget is recorded as uninterpreted, never dropped silently.
-    private func extract(_ text: String, into unit: inout InterpretationUnit) async {
+    private func extract(_ text: String, independent: Bool, into unit: inout InterpretationUnit) async {
         let chunks = Self.chunks(text, max: budget.maxInputChars)
         for (index, chunk) in chunks.prefix(budget.maxChunks).enumerated() {
             let raw: RawCandidates?
             do {
-                raw = try await ask(RawCandidates.self, unit: unit, stage: .nativeText, instruction: Self.candidateInstruction,
+                raw = try await ask(RawCandidates.self, unit: unit, stage: .nativeText, instruction: candidateInstruction,
                                     text: chunk, image: nil)
             } catch { mark(&unit, error, label: "page \(unit.pageIndex + 1) chunk \(index + 1)"); return }
             guard let raw else {
                 unit.status = .failed; unit.coverage.append("page \(unit.pageIndex + 1) chunk \(index + 1): malformed output after retry")
                 return
             }
-            accept(raw.candidates, verifiedAgainst: text, into: &unit)
+            accept(raw.candidates, verifiedAgainst: text, independent: independent, into: &unit)
         }
         if chunks.count > budget.maxChunks {
             unit.status = .partial
@@ -207,19 +239,25 @@ extension InterpretationPipeline {
         let label = "page \(unit.pageIndex + 1) crop \(crop.map { String(Int($0)) }.joined(separator: ","))"
         do {
             let raw = try await withImage(page, crop: crop) { image in
-                try await ask(RawCandidates.self, unit: unit, stage: .vision, instruction: Self.candidateInstruction, text: nil, image: image)
+                try await ask(RawCandidates.self, unit: unit, stage: .vision, instruction: candidateInstruction, text: nil, image: image)
             }
             guard let raw else { unit.status = .failed; unit.coverage.append("\(label): malformed output after retry"); return }
-            // ponytail: quotes verify against native page text only; a scanned page's vision candidates all stay held.
-            accept(raw.candidates, verifiedAgainst: pageText, into: &unit)
+            accept(raw.candidates, verifiedAgainst: pageText, independent: !pageText.isEmpty, into: &unit)
         } catch { mark(&unit, error, label: label) }
     }
 
-    private func accept(_ raw: [RawCandidate], verifiedAgainst text: String, into unit: inout InterpretationUnit) {
+    /// `independent` is false when the only text is model OCR: a quote checked against output from the same kind of
+    /// model proves nothing, so every such candidate stays held until a person checks it against the source image.
+    private func accept(_ raw: [RawCandidate], verifiedAgainst text: String, independent: Bool,
+                        into unit: inout InterpretationUnit) {
+        let sourceTokens = Self.tokens(text)
         for item in raw {
             let quote = item.quote?.trimmingCharacters(in: .whitespacesAndNewlines)
-            let reason: String? = (quote ?? "").isEmpty ? "no source quote"
-                : !text.contains(quote!) ? "quote not found in source text"
+            let quoteTokens = Self.tokens(quote ?? "")
+            let reason: String? = quoteTokens.isEmpty ? "no source quote"
+                : !independent ? "no independent text layer (scanned page); verify the quote against the source image"
+                : !Self.containsRun(sourceTokens, quoteTokens) ? "quote not found in source text"
+                : !Set(Self.tokens(item.text)).isSubset(of: quoteTokens) ? "candidate text not supported by its quote"
                 : (item.confidence ?? 0) < minimumConfidence ? "low confidence" : nil
             let id = "C-\(unit.id.prefix(8))-\(String(format: "%03d", unit.candidates.count + 1))"
             unit.candidates.append(InterpretationCandidate(id: id, kind: item.kind, text: item.text, quote: quote,
@@ -284,6 +322,17 @@ extension InterpretationPipeline {
             throw PreconProjectError.sourceChanged("page image could not be encoded")
         }
         return data
+    }
+
+    /// Lowercased alphanumeric runs: "12'-6\" CLR" -> ["12", "6", "clr"]. Matching on whole tokens stops "ft" matching "left".
+    static func tokens(_ text: String) -> [String] {
+        text.lowercased().split { !$0.isLetter && !$0.isNumber }.map(String.init)
+    }
+
+    /// The quote's tokens appear consecutively in the source.
+    static func containsRun(_ haystack: [String], _ needle: [String]) -> Bool {
+        guard !needle.isEmpty, needle.count <= haystack.count else { return false }
+        return (0...(haystack.count - needle.count)).contains { Array(haystack[$0..<($0 + needle.count)]) == needle }
     }
 
     /// Line-bounded chunks of at most `max` characters; overlong lines are split hard.

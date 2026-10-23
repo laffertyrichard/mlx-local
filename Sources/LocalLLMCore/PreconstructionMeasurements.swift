@@ -84,6 +84,26 @@ public struct TakeoffMeasurements: Codable, Equatable, Sendable {
         return rows
     }
 
+    /// Quantities for every traced page of one revision. Area and route rows stay per page; count rows are combined
+    /// per trade across pages, so one fixture seen on two sheets is 1 EA. Identity is the person-entered physical item
+    /// ID only, never position or appearance, so identical-looking fixtures with different IDs stay separate.
+    public static func quantities(across pages: [TakeoffMeasurements]) -> [QuantityRecord] {
+        var rows = pages.flatMap { $0.quantities().filter { $0.unit != .EA } }
+        let counted = pages.filter { !$0.counts.isEmpty }
+        for trade in Set(counted.map(\.countTrade)).sorted() {
+            let group = counted.filter { $0.countTrade == trade }
+            let marks = group.flatMap { page in page.counts.map { (page: page.source.id, count: $0) } }
+            var row = group[0].row("QTY-COUNT-\(trade)", item: "COUNT-\(trade)", trade: trade, unit: .EA,
+                                   value: Double(Takeoff.physicalCount(marks.map(\.count.physicalItemId))),
+                                   basis: "Distinct physical items across \(marks.count) marks on \(group.count) page(s)",
+                                   refs: marks.map { "\($0.page)/\($0.count.id)" })
+            row.location = group.map(\.location).reduce(into: [String]()) { if !$0.contains($1) { $0.append($1) } }.joined(separator: ", ")
+            row.sourceIds = group.map(\.source.id)
+            rows.append(row)
+        }
+        return rows
+    }
+
     /// Arithmetic and topology recorded separately; visual, scope and artifact checks are not run in this slice.
     public func checks() -> [CheckRecord] {
         guard let area else {

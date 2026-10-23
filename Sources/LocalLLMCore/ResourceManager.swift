@@ -170,7 +170,8 @@ public enum ResourceError: LocalizedError {
     }
 }
 
-/// Machine availability already excludes resident allocations. Nil availability means observation failed.
+/// Approximate free/reclaimable bytes from OS counters, not a measurement of per-model headroom.
+/// Nil availability means observation failed; resident estimates are not subtracted from these counters.
 public struct MemoryObservation: Sendable {
     public var availableBytes: Int64?
     public var physicalBytes: Int64
@@ -224,11 +225,13 @@ public actor ModelResourceManager {
         return min(observation.usableBytes ?? observation.commitmentCapBytes, observation.commitmentCapBytes)
     }
 
-    /// Count resident allocations only through A, never subtract their estimates from live availability.
-    /// Peaks (weights + KV + temporary buffers) reserve incoming/in-flight demand; resident peaks belong
-    /// only in the separate commitment cap. Full in-flight reservations conservatively double-count any
-    /// partial allocation already in A until load returns. The 20% reserve cushions untracked active KV
-    /// growth, but is not a per-model growth guarantee. Missing A uses the estimate cap alone.
+    /// Do not subtract resident estimates from approximate OS availability A.
+    /// Registry peak estimates (size * 1.15 / benchmark peak * 1.15), not measured current peaks,
+    /// reserve incoming/in-flight demand; resident estimates belong only in the commitment cap.
+    /// Full in-flight reservations may also count partial allocations already reflected in A until
+    /// load returns. Active-model KV growth after admission is not attributed; the 20% reserve is
+    /// only a heuristic cushion. No real-model memory evaluation has validated this admission policy.
+    /// Missing A uses the estimate cap alone.
     private func admissionHeadroom() -> Int64 {
         let inFlight = reservedMemory.values.reduce(0, +)
         let committed = residentMemory() + inFlight

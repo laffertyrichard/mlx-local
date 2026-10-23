@@ -107,13 +107,16 @@ Workers bind to probed loopback ports. Readiness verifies the requested model id
 ## Live memory accounting
 
 A is `vm_stat` text's free + inactive + speculative pages, multiplied by its page size.
-Purgeable pages are excluded because purgeability overlaps resident page queues; adding them
-would double-count availability. The text output already separates free from speculative pages.
-For a successful observation A, admission requires incoming peak P plus in-flight reservations L
-not to exceed `0.80 * A` (the existing 20% safety reserve). Resident allocations are already excluded
-from A: their estimates are neither subtracted again nor added back after eviction. Independently,
-resident peak estimates E plus L plus P must fit `0.72 * physical`. Model estimates represent peak
-weights, KV cache and temporary buffers: `max(size * 1.15, benchmark peak * 1.15)`.
+These categories approximate free/reclaimable memory, not guaranteed immediately allocatable
+bytes or measured per-model headroom. Purgeable pages are excluded because purgeability overlaps
+resident page queues. The text output already separates free from speculative pages.
+For a successful observation A, admission requires incoming estimated peak P plus in-flight
+reservations L not to exceed `0.80 * A` (the existing 20% safety reserve). Resident estimates are
+neither subtracted from A again nor added back after eviction. Independently, resident estimates
+E plus L plus P must fit `0.72 * physical`. Registry estimates are intended to cover weights,
+KV cache and temporary buffers using size * 1.15 (with the existing 512,000,000-byte minimum)
+and the larger benchmark peak * 1.15 when available. They are not measurements of the current
+load's peak demand.
 
 Admission evicts idle models in LRU order and re-observes after every unload; estimated reclamation
 never authorizes a load. After each eviction suspension, it also rechecks same-model residency
@@ -122,11 +125,13 @@ Snapshots report the smaller remaining live/commitment headroom.
 `reclaimableMemoryBytes` remains an idle-estimate **routing hint only**. The unchanged router applies
 its extra 0.9 margin; a route allowed by the hint can still fail authoritative admission.
 
-Full-peak in-flight reservations remain until load completes. This is the conservative count-once
-exception: partial allocations may already reduce A, so concurrent admission can be refused rather
-than over-admitted. Reservation-to-resident transfer happens before callbacks; failed loads release
-their reservations. Active-model KV growth is not attributable per model. The 20% reserve cushions
-it only heuristically, not as a guaranteed growth budget.
+Full estimated-peak in-flight reservations remain until load completes. Partial allocations may
+already reduce A, so these reservations can conservatively reduce admission headroom further;
+this does not guarantee that estimates bound actual allocations. Reservation-to-resident transfer
+happens before callbacks; failed loads release their reservations. Active-model KV growth after
+admission is not attributed per model. The 20% reserve cushions it only heuristically, not as a
+guaranteed growth budget. No real-model memory evaluation has been performed for this policy;
+verification uses synthetic observations and fake runtimes, not measured model peaks.
 
 If observation fails, admission uses only the 72% estimate cap, never physical memory as available.
 With no provider, headless tools retain their fixed `memoryBudgetBytes` estimate accounting and

@@ -12,7 +12,6 @@ import Testing
 private let advPackage = URL(fileURLWithPath: #filePath)
     .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
     .appending(path: "Preconstruction")
-private let advCrashEnabled = ProcessInfo.processInfo.environment["ADVERSARIAL_CRASH"] == "1"
 
 /// Temporary data root standing in for PRECONSTRUCTION_WORKSPACE, plus a scratch directory for generated PDFs.
 private struct AdvWorkspace {
@@ -261,24 +260,24 @@ struct PreconstructionAdversarialTests {
     /// This test documents that gap: any future pipeline instance with a different prompt would silently
     /// share cached units with this one. If the instruction is ever made configurable, unitID must grow a
     /// prompt component and this test must change.
-    @Test("F03 (documents gap): the unit key cannot distinguish prompt variants because the instruction is not configurable")
+    @Test("F03: the unit key distinguishes prompt variants")
     func cacheIdentityIgnoresInstruction() throws {
         let workspace = try AdvWorkspace()
         defer { workspace.cleanUp() }
         let project = try workspace.project()
         let sources = try advImportedPlan(workspace, project: project)
         let first = InterpretationPipeline(store: workspace.store, project: project, interpreter: { _ in "" })
-        let variant = first // prompt variants are impossible to construct today; the instruction is static
+        var variant = first
+        variant.candidateInstruction += " (variant)"
         var different = first
         different.budget.maxInputChars = first.budget.maxInputChars + 1
 
         // Sanity: configuration that does enter the key really changes the identity.
         #expect(first.unitID(sources[0], focus: nil) != different.unitID(sources[0], focus: nil),
                 "fields like the budget must change the unit identity")
-        // Documented gap: no pipeline configuration can vary the candidate instruction text, so two
-        // rung-of-the-mill pipeline instances share one identity regardless of what prompt they carry.
-        #expect(first.unitID(sources[0], focus: nil) == variant.unitID(sources[0], focus: nil),
-                "unitID cannot distinguish pipelines by their candidate instruction (instruction not configurable)")
+        // Coordinator update after the fix: the instruction is configurable and digested into the key.
+        #expect(first.unitID(sources[0], focus: nil) != variant.unitID(sources[0], focus: nil),
+                "unitID must distinguish pipelines by their candidate instruction")
     }
 
     // MARK: - F04 interrupted save
@@ -293,7 +292,7 @@ struct PreconstructionAdversarialTests {
         let project = try workspace.project()
         let measurement = try PreconJSON.encoder.encode(["interrupted": true])
         let name = "R1-plane.json"
-        let path = try workspace.store.saveMeasurement(measurement, named: name, in: project)
+        let path = "measurements/\(name)"
 
         // Block the revision write by making revisions/ unwritable, then fail the save.
         let revisions = project.appending(path: "revisions")
@@ -303,22 +302,21 @@ struct PreconstructionAdversarialTests {
         var revision = PreconRevision(revisionId: "R1")
         revision.quantities = []
         #expect(throws: (any Error).self, "the interrupted save must fail while revisions/ is unwritable") {
-            _ = try workspace.store.saveRevision(revision, in: project)
+            _ = try workspace.store.saveRevision(revision, measurements: [(name, measurement)], in: project)
         }
         try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: revisions.path)
 
         // Retry the identical sequence with identical bytes: it must succeed.
         var retryError: (any Error)?
-        var retried: String?
+        var saved: URL?
         do {
-            retried = try workspace.store.saveMeasurement(measurement, named: name, in: project)
+            saved = try workspace.store.saveRevision(revision, measurements: [(name, measurement)], in: project)
         } catch {
             retryError = error
         }
-        #expect(retried == path && retryError == nil,
-                "F04 invariant: the identical measurement retry must succeed; got \(retryError.map(String.init(describing:)) ?? "success")")
-        _ = try workspace.store.saveRevision(revision, in: project)
-        let checkpoint = try workspace.store.saveCheckpoint(for: revision, in: project, measurements: [path])
+        #expect(retryError == nil,
+                "F04 invariant: the identical retry must succeed; got \(retryError.map(String.init(describing:)) ?? "success")")
+        let checkpoint = try #require(saved)
         #expect(try workspace.store.resume(from: checkpoint, in: project).1.measurementDigests.keys.sorted() == [path])
     }
 
@@ -378,7 +376,14 @@ struct PreconstructionAdversarialTests {
         let sources = try advImportedPlan(workspace, project: project)
         let mock = AdvInterpreter { _, _ in #"{"candidates": []}"# }
         let pipeline = InterpretationPipeline(store: workspace.store, project: project, interpreter: mock.closure)
-        let units = try await pipeline.run(sources, focus: [VisionFocus(sourceId: sources[0].id, rect: rect)])
+        let units: [InterpretationUnit]
+        do {
+            units = try await pipeline.run(sources, focus: [VisionFocus(sourceId: sources[0].id, rect: rect)])
+        } catch let error as TakeoffError {
+            #expect(!(error.errorDescription ?? "").isEmpty, "(\(label)) refused with a reason: \(error)")
+            #expect(await mock.calls.filter { $0.stage == .vision }.isEmpty, "(\(label)) refused before any vision call")
+            return
+        }
         let focusUnit = try #require(units.last, "the focus crop must produce a unit")
         #expect(!focusUnit.coverage.isEmpty,
                 "F06 invariant (\(label)): a bad crop rect must record an error/coverage entry; got coverage \(focusUnit.coverage)")
@@ -387,8 +392,8 @@ struct PreconstructionAdversarialTests {
 
     /// ADVERSARIAL_CRASH=1 required: these rects crash the current process (array index out of range for a
     /// 3-number rect; Int(%) conversion traps on NaN and infinity), so they are not safe to run by default.
-    @Test("F06 crash (requires ADVERSARIAL_CRASH=1): degenerate numeric crop rects must error, not crash",
-          .enabled(if: advCrashEnabled, "the current code crashes the process on these inputs"), arguments: [
+    @Test("F06 (crashed before the fix): degenerate numeric crop rects must error, not crash",
+          arguments: [
         ("rect with 3 numbers", [100.0, 100, 150]),
         ("NaN rect", [Double.nan, 100, 100, 100]),
         ("infinity rect", [100.0, 100, Double.infinity, 100]),
@@ -400,7 +405,14 @@ struct PreconstructionAdversarialTests {
         let sources = try advImportedPlan(workspace, project: project)
         let mock = AdvInterpreter { _, _ in #"{"candidates": []}"# }
         let pipeline = InterpretationPipeline(store: workspace.store, project: project, interpreter: mock.closure)
-        let units = try await pipeline.run(sources, focus: [VisionFocus(sourceId: sources[0].id, rect: rect)])
+        let units: [InterpretationUnit]
+        do {
+            units = try await pipeline.run(sources, focus: [VisionFocus(sourceId: sources[0].id, rect: rect)])
+        } catch let error as TakeoffError {
+            #expect(!(error.errorDescription ?? "").isEmpty, "(\(label)) refused with a reason: \(error)")
+            #expect(await mock.calls.filter { $0.stage == .vision }.isEmpty, "(\(label)) refused before any vision call")
+            return
+        }
         let focusUnit = try #require(units.last, "the focus crop must produce a unit")
         #expect(!focusUnit.coverage.isEmpty,
                 "F06 invariant (\(label)): a degenerate numeric rect must record an error/coverage entry; got coverage \(focusUnit.coverage)")
@@ -468,7 +480,7 @@ struct PreconstructionAdversarialTests {
         let first = try pageCounting("S1", pageIndex: 0, itemIds: ["F01", "F02"])
         let second = try pageCounting("S1-P1", pageIndex: 1, itemIds: ["F01"])
         var revision = PreconRevision(revisionId: "R1")
-        revision.quantities = [first, second].flatMap { $0.quantities() }
+        revision.quantities = TakeoffMeasurements.quantities(across: [first, second])
         #expect(revision.provisionalTotal(.EA) == 2,
                 "F08 invariant: the same physical item on two pages counts once, total 2 EA")
 
@@ -476,7 +488,7 @@ struct PreconstructionAdversarialTests {
         let distinctA = try pageCounting("S2", pageIndex: 0, itemIds: ["F01"])
         let distinctB = try pageCounting("S2-P1", pageIndex: 1, itemIds: ["F02"])
         var distinct = PreconRevision(revisionId: "R2")
-        distinct.quantities = [distinctA, distinctB].flatMap { $0.quantities() }
+        distinct.quantities = TakeoffMeasurements.quantities(across: [distinctA, distinctB])
         #expect(distinct.provisionalTotal(.EA) == 2,
                 "distinct fixtures that look identical at the same point on two pages must not be collapsed")
     }

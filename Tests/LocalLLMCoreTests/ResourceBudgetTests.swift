@@ -111,6 +111,23 @@ struct ResourceBudgetTests {
         #expect(memory.loaded.isEmpty)
     }
 
+    @Test("vm_stat parser counts disjoint queues and preserves zero and missing observations")
+    func vmStatParserControls() throws {
+        let text = """
+        Mach Virtual Memory Statistics: (page size of 4096 bytes)
+        Pages free: 10.
+        Pages inactive: 20.
+        Pages speculative: 3.
+        """
+        let available = try #require(MemoryObservation.availableBytes(fromVMStat: text))
+        let expected: Int64 = 33 * 4096
+        #expect(available == expected)
+        #expect(MemoryObservation.availableBytes(fromVMStat: text.replacingOccurrences(of: "Pages inactive: 20.", with: "")) == nil)
+        let zero = text.replacingOccurrences(of: "10.", with: "0.")
+            .replacingOccurrences(of: "20.", with: "0.").replacingOccurrences(of: "3.", with: "0.")
+        #expect(MemoryObservation.availableBytes(fromVMStat: zero) == 0)
+    }
+
     @Test("R2-M02: same-model callers coalesce after a suspended eviction")
     func sameModelAfterEviction() async throws {
         let memory = Memory(100_000)

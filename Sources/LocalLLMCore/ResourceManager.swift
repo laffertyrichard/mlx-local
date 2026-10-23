@@ -184,7 +184,8 @@ public struct MemoryObservation: Sendable {
         let pageSize: Int64 = text.split(separator: "\n").first.flatMap { line in
             line.split(whereSeparator: { !$0.isNumber }).compactMap { Int64($0) }.last
         } ?? 16_384
-        let labels = ["Pages free", "Pages inactive", "Pages speculative", "Pages purgeable"]
+        // Purgeability overlaps page queues; vm_stat text reports free and speculative separately.
+        let labels = ["Pages free", "Pages inactive", "Pages speculative"]
         var pages: Int64 = 0
         var observedLabels = Set<String>()
         for line in text.split(separator: "\n") {
@@ -431,19 +432,21 @@ public actor ModelResourceManager {
 
     func ensureLoaded(_ model: RegisteredModel, runtime: any ModelRuntime,
                               onEvent: (@Sendable (PipelineEvent) async -> Void)?) async throws -> (milliseconds: Double, cacheHit: Bool) {
-        if resident[model.id] != nil { resident[model.id]?.lastUsed = Date(); return (0, true) }
-        if let inFlight = loading[model.id] {
-            let waitStarted = Date()
-            try await inFlight.value
-            if resident[model.id] == nil {
-                resident[model.id] = Residency(lastUsed: Date(), activeRequests: 0)
-                var loadedModel = model; loadedModel.loadedState = .loaded; loadedModel.health = .healthy; registry.upsert(loadedModel)
-                reservedMemory.removeValue(forKey: model.id); loading.removeValue(forKey: model.id)
-                await onEvent?(.modelLoaded(model.id, milliseconds: 0))
+        while true {
+            // Eviction suspends the actor: another caller may have loaded or reserved this ID.
+            if resident[model.id] != nil { resident[model.id]?.lastUsed = Date(); return (0, true) }
+            if let inFlight = loading[model.id] {
+                let waitStarted = Date()
+                try await inFlight.value
+                if resident[model.id] == nil {
+                    resident[model.id] = Residency(lastUsed: Date(), activeRequests: 0)
+                    var loadedModel = model; loadedModel.loadedState = .loaded; loadedModel.health = .healthy; registry.upsert(loadedModel)
+                    reservedMemory.removeValue(forKey: model.id); loading.removeValue(forKey: model.id)
+                    await onEvent?(.modelLoaded(model.id, milliseconds: 0))
+                }
+                return (Date().timeIntervalSince(waitStarted) * 1000, false)
             }
-            return (Date().timeIntervalSince(waitStarted) * 1000, false)
-        }
-        while model.approximateMemoryBytes > admissionHeadroom() {
+            if model.approximateMemoryBytes <= admissionHeadroom() { break }
             guard let victim = resident.filter({ $0.value.activeRequests == 0 }).min(by: { $0.value.lastUsed < $1.value.lastUsed })?.key else {
                 throw ResourceError.memoryBudgetExceeded(modelID: model.id)
             }

@@ -106,6 +106,9 @@ Workers bind to probed loopback ports. Readiness verifies the requested model id
 
 ## Live memory accounting
 
+A is `vm_stat` text's free + inactive + speculative pages, multiplied by its page size.
+Purgeable pages are excluded because purgeability overlaps resident page queues; adding them
+would double-count availability. The text output already separates free from speculative pages.
 For a successful observation A, admission requires incoming peak P plus in-flight reservations L
 not to exceed `0.80 * A` (the existing 20% safety reserve). Resident allocations are already excluded
 from A: their estimates are neither subtracted again nor added back after eviction. Independently,
@@ -113,7 +116,9 @@ resident peak estimates E plus L plus P must fit `0.72 * physical`. Model estima
 weights, KV cache and temporary buffers: `max(size * 1.15, benchmark peak * 1.15)`.
 
 Admission evicts idle models in LRU order and re-observes after every unload; estimated reclamation
-never authorizes a load. Snapshots report the smaller remaining live/commitment headroom.
+never authorizes a load. After each eviction suspension, it also rechecks same-model residency
+and in-flight loading before reserving memory, so concurrent callers share one backend load.
+Snapshots report the smaller remaining live/commitment headroom.
 `reclaimableMemoryBytes` remains an idle-estimate **routing hint only**. The unchanged router applies
 its extra 0.9 margin; a route allowed by the hint can still fail authoritative admission.
 

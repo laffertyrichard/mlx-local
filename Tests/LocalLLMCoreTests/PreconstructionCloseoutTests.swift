@@ -281,6 +281,189 @@ struct PreconstructionCloseoutTests {
                 "the abandoned ID's leftover files must stay in place untouched")
     }
 
+
+    // MARK: - Production save bundle contract
+
+    /// Same serialized payload types and naming as TakeoffController.saveBundle; ID selection remains the caller's job.
+    private func csBundle(_ id: String, draft: TakeoffMeasurements) throws
+        -> (revision: PreconRevision, files: [(name: String, data: Data)]) {
+        var revision = PreconRevision(revisionId: id, synthetic: true)
+        revision.sources = [draft.source]
+        revision.calibrations = [draft.calibration]
+        revision.quantities = TakeoffMeasurements.quantities(across: [draft])
+        revision.checks = draft.checks()
+        let plane = try #require(draft.plane)
+        return (revision, [
+            ("\(id)-\(draft.source.id)-measurements.json", try PreconJSON.encoder.encode(draft)),
+            ("\(id)-\(draft.source.id)-plane.json", try PreconJSON.encoder.encode(plane)),
+        ])
+    }
+
+    private func csImportedDraft(_ workspace: CsWorkspace, project: URL) throws -> TakeoffMeasurements {
+        let sources = try workspace.store.importSource(closeoutPackage.appending(path: "fixtures/synthetic-plan.pdf"),
+                                                       into: project, role: .proposed, revision: "SYN-R1")
+        var draft = TakeoffMeasurements(source: try #require(sources.first))
+        draft.calibrationChecks = csCandidateChecks()
+        draft.polys = [.init(id: "G01", zone: "Z01", sign: 1,
+                             pts: [[0, 0], [216, 0], [216, 180], [0, 180]])]
+        return draft
+    }
+
+    @Test("R-a: R1 revision failure then checkpoint failure then unchanged retry saves exactly one bundle")
+    func threeSaveSequence() throws {
+        let workspace = try CsWorkspace()
+        defer { workspace.cleanUp() }
+        let project = try workspace.project()
+        let baselineCheckpoints = csFiles(project, under: "checkpoints")
+        let bundle = try csBundle("R1", draft: csImportedDraft(workspace, project: project))
+        var store = workspace.store
+        let measurementNames = bundle.files.map(\.name).sorted()
+
+        store.beforeWrite = csFailAt("revisions/R1.json")
+        #expect(throws: CsFailure.self) {
+            _ = try store.saveRevision(bundle.revision, measurements: bundle.files, in: project, at: csDate(0))
+        }
+        #expect(csSaveFiles(project, under: "measurements") == measurementNames)
+        #expect(csFiles(project, under: "revisions").isEmpty)
+        #expect(csFiles(project, under: "checkpoints") == baselineCheckpoints)
+
+        store.beforeWrite = csFailAt("checkpoints/R1")
+        #expect(throws: CsFailure.self) {
+            _ = try store.saveRevision(bundle.revision, measurements: bundle.files, in: project, at: csDate(1))
+        }
+        #expect(csSaveFiles(project, under: "measurements") == measurementNames)
+        #expect(csFiles(project, under: "revisions") == ["R1.json"])
+        #expect(csFiles(project, under: "checkpoints") == baselineCheckpoints)
+        let paths = bundle.files.map { "measurements/\($0.name)" } + ["revisions/R1.json"]
+        let before = try Dictionary(uniqueKeysWithValues: paths.map {
+            ($0, try StableDigest.file(project.appending(path: $0)))
+        })
+
+        store.beforeWrite = nil
+        let checkpointURL = try store.saveRevision(bundle.revision, measurements: bundle.files, in: project, at: csDate(2))
+        #expect(csSaveFiles(project, under: "measurements") == measurementNames)
+        #expect(csFiles(project, under: "revisions") == ["R1.json"])
+        #expect(csFiles(project, under: "checkpoints") == (baselineCheckpoints + [checkpointURL.lastPathComponent]).sorted())
+        #expect(csCheckpoints(project, id: "R1") == [checkpointURL])
+        #expect(csDigestMap(project, paths: paths) == before)
+        #expect(csTempFiles(project).isEmpty)
+        let reopened = try PreconProjectStore(root: workspace.root)
+        let (revision, checkpoint) = try reopened.resume(from: checkpointURL, in: project)
+        #expect(revision == bundle.revision)
+        #expect(checkpoint.revisionId == "R1")
+        #expect(Set(checkpoint.measurementDigests.keys) == Set(bundle.files.map { "measurements/\($0.name)" }))
+    }
+
+    @Test("R-b/R-c: changed bundle requires a fresh ID and preserves every abandoned R2 file")
+    func changedBundleUsesFreshID() throws {
+        let workspace = try CsWorkspace()
+        defer { workspace.cleanUp() }
+        let project = try workspace.project()
+        let baselineCheckpoints = csFiles(project, under: "checkpoints")
+        var draft = try csImportedDraft(workspace, project: project)
+        let first = try csBundle("R1", draft: draft)
+        let firstCheckpoint = try workspace.store.saveRevision(first.revision, measurements: first.files, in: project, at: csDate(0))
+
+        draft.location = "Abandoned room"
+        let abandoned = try csBundle("R2", draft: draft)
+        var broken = workspace.store
+        broken.beforeWrite = csFailAt("checkpoints/R2")
+        #expect(throws: CsFailure.self) {
+            _ = try broken.saveRevision(abandoned.revision, measurements: abandoned.files, in: project, at: csDate(1))
+        }
+        let abandonedPaths = abandoned.files.map { "measurements/\($0.name)" } + ["revisions/R2.json"]
+        let before = try Dictionary(uniqueKeysWithValues: abandonedPaths.map {
+            ($0, try StableDigest.file(project.appending(path: $0)))
+        })
+        #expect(before.count == 3)
+        #expect(csCheckpoints(project, id: "R2").isEmpty)
+
+        draft.location = "Changed room"
+        let collision = try csBundle("R2", draft: draft)
+        #expect(collision.files.map(\.data) != abandoned.files.map(\.data))
+        #expect(throws: PreconProjectError.alreadyExists(collision.files[0].name)) {
+            _ = try workspace.store.saveRevision(collision.revision, measurements: collision.files, in: project, at: csDate(2))
+        }
+        // TakeoffController catches this collision and selects an unused ID; this core test supplies that ID explicitly.
+        let fresh = try csBundle("R3", draft: draft)
+        let checkpointURL = try workspace.store.saveRevision(fresh.revision, measurements: fresh.files, in: project, at: csDate(3))
+        let after = try Dictionary(uniqueKeysWithValues: abandonedPaths.map {
+            ($0, try StableDigest.file(project.appending(path: $0)))
+        })
+        #expect(after == before, "Every abandoned measurement, plane and revision must remain byte-identical")
+        #expect(csFiles(project, under: "revisions") == ["R1.json", "R2.json", "R3.json"])
+        #expect(csSaveFiles(project, under: "measurements") == (first.files + abandoned.files + fresh.files).map(\.name).sorted())
+        #expect(csFiles(project, under: "checkpoints") == (baselineCheckpoints + [firstCheckpoint.lastPathComponent, checkpointURL.lastPathComponent]).sorted())
+        #expect(csTempFiles(project).isEmpty)
+
+        let reopened = try PreconProjectStore(root: workspace.root)
+        let (revision, checkpoint) = try reopened.resume(from: checkpointURL, in: project)
+        #expect(revision == fresh.revision)
+        #expect(checkpoint.revisionId == "R3")
+        #expect(checkpoint.revisionSha256 == (try StableDigest.file(project.appending(path: "revisions/R3.json"))))
+        let referenced = Set(checkpoint.measurementDigests.keys).union(checkpoint.sourceDigests.keys)
+            .union(["revisions/\(checkpoint.revisionId).json"])
+        #expect(referenced.isDisjoint(with: abandonedPaths))
+        #expect(Set(checkpoint.measurementDigests.keys) == Set(fresh.files.map { "measurements/\($0.name)" }))
+        #expect(try reopened.resume(from: firstCheckpoint, in: project).0 == first.revision)
+    }
+
+    @Test("R-d: reopened production bundle verifies every binding and rejects isolated tampering")
+    func reopenedBundleValidatesEveryBinding() throws {
+        let workspace = try CsWorkspace()
+        defer { workspace.cleanUp() }
+        let project = try workspace.project()
+        var draft = try csImportedDraft(workspace, project: project)
+        let first = try csBundle("R1", draft: draft)
+        let firstCheckpoint = try workspace.store.saveRevision(first.revision, measurements: first.files, in: project, at: csDate(0))
+        draft.location = "Newer room"
+        let latest = try csBundle("R2", draft: draft)
+        let latestCheckpoint = try workspace.store.saveRevision(latest.revision, measurements: latest.files, in: project, at: csDate(1))
+        let reopened = try PreconProjectStore(root: workspace.root)
+        let (revision, checkpoint) = try reopened.resume(from: latestCheckpoint, in: project)
+        #expect(revision == latest.revision)
+        #expect(checkpoint.revisionId == "R2")
+        #expect(checkpoint.createdAt == csDate(1))
+        let revisionPath = "revisions/R2.json"
+        #expect(checkpoint.revisionSha256 == (try StableDigest.file(project.appending(path: revisionPath))))
+        #expect(checkpoint.sourceDigests == [draft.source.path: draft.source.sha256])
+        #expect(try StableDigest.file(project.appending(path: draft.source.path)) == draft.source.sha256)
+        let measurementDigests = try Dictionary(uniqueKeysWithValues: latest.files.map {
+            ("measurements/\($0.name)", try StableDigest.file(project.appending(path: "measurements/\($0.name)")))
+        })
+        #expect(checkpoint.measurementDigests == measurementDigests)
+        #expect(checkpoint.measurementDigests.count == 2)
+
+        let boundFiles = [(revisionPath, "revision R2 changed"),
+                          (draft.source.path, "source \(draft.source.path) changed")]
+            + measurementDigests.keys.sorted().map { ($0, "measurement \($0) changed") }
+        for (path, reason) in boundFiles {
+            let url = project.appending(path: path)
+            let original = try Data(contentsOf: url)
+            let permissions = try FileManager.default.attributesOfItem(atPath: url.path)[.posixPermissions]
+            try FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: url.path)
+            // Whitespace keeps the JSON decodable: rejection must be the bound byte hash, not a parse failure.
+            try (original + Data("\n ".utf8)).write(to: url)
+            #expect(throws: PreconProjectError.staleCheckpoint([reason])) {
+                _ = try reopened.resume(from: latestCheckpoint, in: project)
+            }
+            if path == draft.source.path {
+                #expect(throws: PreconProjectError.staleCheckpoint([reason])) {
+                    _ = try reopened.resume(from: firstCheckpoint, in: project)
+                }
+            } else {
+                // Older valid checkpoint is directly resumable; native UI's ordered search is not under test here.
+                #expect(try reopened.resume(from: firstCheckpoint, in: project).0 == first.revision)
+            }
+            try original.write(to: url)
+            if let permissions {
+                try FileManager.default.setAttributes([.posixPermissions: permissions], ofItemAtPath: url.path)
+            }
+            #expect(try reopened.resume(from: latestCheckpoint, in: project).0 == latest.revision)
+            #expect(try reopened.resume(from: firstCheckpoint, in: project).0 == first.revision)
+        }
+    }
+
     // MARK: - Mixed-scale refusal matrix
 
     /// Page with a traced 216x180 pt area calibrated to 18 pt/ft (candidate). Net area 120 SF.

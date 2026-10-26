@@ -104,6 +104,39 @@ Documents always normalize before model execution. Multi-image comparisons delib
 
 Workers bind to probed loopback ports. Readiness verifies the requested model identity rather than accepting an arbitrary HTTP 200. A process registry synchronously terminates children during application shutdown.
 
+## Live memory accounting
+
+A is `vm_stat` text's free + inactive + speculative pages, multiplied by its page size.
+These categories approximate free/reclaimable memory, not guaranteed immediately allocatable
+bytes or measured per-model headroom. Purgeable pages are excluded because purgeability overlaps
+resident page queues. The text output already separates free from speculative pages.
+For a successful observation A, admission requires incoming estimated peak P plus in-flight
+reservations L not to exceed `0.80 * A` (the existing 20% safety reserve). Resident estimates are
+neither subtracted from A again nor added back after eviction. Independently, resident estimates
+E plus L plus P must fit `0.72 * physical`. Registry estimates are intended to cover weights,
+KV cache and temporary buffers using size * 1.15 (with the existing 512,000,000-byte minimum)
+and the larger benchmark peak * 1.15 when available. They are not measurements of the current
+load's peak demand.
+
+Admission evicts idle models in LRU order and re-observes after every unload; estimated reclamation
+never authorizes a load. After each eviction suspension, it also rechecks same-model residency
+and in-flight loading before reserving memory, so concurrent callers share one backend load.
+Snapshots report the smaller remaining live/commitment headroom.
+`reclaimableMemoryBytes` remains an idle-estimate **routing hint only**. The unchanged router applies
+its extra 0.9 margin; a route allowed by the hint can still fail authoritative admission.
+
+Full estimated-peak in-flight reservations remain until load completes. Partial allocations may
+already reduce A, so these reservations can conservatively reduce admission headroom further;
+this does not guarantee that estimates bound actual allocations. Reservation-to-resident transfer
+happens before callbacks; failed loads release their reservations. Active-model KV growth after
+admission is not attributed per model. The 20% reserve cushions it only heuristically, not as a
+guaranteed growth budget. No real-model memory evaluation has been performed for this policy;
+verification uses synthetic observations and fake runtimes, not measured model peaks.
+
+If observation fails, admission uses only the 72% estimate cap, never physical memory as available.
+With no provider, headless tools retain their fixed `memoryBudgetBytes` estimate accounting and
+reclaimable hints unchanged. A valid zero-availability observation is not observation failure.
+
 ## Pipeline contracts and recovery
 
 Intermediate values are `PipelineArtifact`s with kind, content, source provenance, confidence, and metadata. OCR has a basic repetition/completeness confidence gate. Structured JSON is normalized/validated only at the terminal stage, retried once, then falls back.

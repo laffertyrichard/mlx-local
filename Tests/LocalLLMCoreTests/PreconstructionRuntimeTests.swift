@@ -77,9 +77,7 @@ private func rtRequest(_ stage: InterpretationStage = .nativeText) -> Interpreta
                           maxOutputTokens: 64, isRetry: false)
 }
 private func rtPipeline(_ w: RtWorkspace, _ adapter: PreconRuntimeInterpreter) async throws -> InterpretationPipeline {
-    var pipeline = InterpretationPipeline(store: w.store, project: w.project, interpreter: adapter.interpret)
-    pipeline.profileDigest = try await adapter.profileDigest()
-    return pipeline
+    try await adapter.pipeline(store: w.store, project: w.project)
 }
 
 @Suite("Preconstruction runtime adapter MOCK")
@@ -147,7 +145,6 @@ struct PreconstructionRuntimeTests {
         let adapter = PreconRuntimeInterpreter(manager: rtManager(runtime, budget: 1), textModelID: "text")
         do { _ = try await adapter.interpret(rtRequest()); Issue.record("must refuse") }
         catch PreconRuntimeError.resourceRefused(let reason) { #expect(!reason.isEmpty) }
-        #expect(await adapter.admissionReason() != nil)
         var pipeline = try await rtPipeline(w, adapter)
         let refused = try await pipeline.run(sources)
         #expect(refused.count == 1 && refused[0].status == .deferred && !refused[0].questions.isEmpty)
@@ -155,7 +152,6 @@ struct PreconstructionRuntimeTests {
         #expect(await runtime.calls.isEmpty)
         let available = PreconRuntimeInterpreter(manager: rtManager(runtime), textModelID: "text")
         pipeline = try await rtPipeline(w, available)
-        pipeline.gate = { await available.admissionReason() }
         #expect(pipeline.unitID(sources[0], focus: nil) == refused[0].id)
         let completed = try await pipeline.run(sources)
         #expect(completed.count == 2 && completed.allSatisfy { $0.status == .complete })
@@ -166,7 +162,6 @@ struct PreconstructionRuntimeTests {
         let w = try RtWorkspace(); defer { w.cleanUp() }
         let runtime = RtRuntime { _,_,_ in throw ResourceError.memoryBudgetExceeded(modelID: "text") }
         let adapter = PreconRuntimeInterpreter(manager: rtManager(runtime), textModelID: "text")
-        #expect(await adapter.admissionReason() == nil)
         do { _ = try await adapter.interpret(rtRequest()); Issue.record("must refuse") }
         catch PreconRuntimeError.runtimeFailed(let reason) { #expect(!reason.isEmpty) }
         let pipeline = try await rtPipeline(w, adapter)
@@ -218,7 +213,7 @@ struct PreconstructionRuntimeTests {
         #expect(!held[0].questions.isEmpty)
     }
 
-    @Test("S07: model profile and source identity change cache IDs without rewriting old units")
+    @Test("S07/C3-03: production pipeline factory binds model profile and source identity")
     func modelProfileIdentity() async throws {
         let w = try RtWorkspace(); defer { w.cleanUp() }
         let sources = try w.sources()
@@ -344,5 +339,24 @@ struct PreconstructionRuntimeTests {
         json.removeValue(forKey: "questions")
         let legacy = try PreconJSON.decoder.decode(InterpretationUnit.self, from: JSONSerialization.data(withJSONObject: json))
         #expect(legacy.questions.isEmpty)
+    }
+
+    @Test("S19/C3-01: over-threshold profiles defer before backend chunking without calls")
+    func oversizedProfileRefused() async throws {
+        let w = try RtWorkspace(); defer { w.cleanUp() }
+        let runtime = RtRuntime()
+        let profile = ModelProfile(id: "long", version: "1", baseModelID: "text", taskClasses: [.structuredExtraction],
+                                   capabilities: [.reasoning], systemPrompt: String(repeating: "x", count: 100_000))
+        let adapter = PreconRuntimeInterpreter(manager: rtManager(runtime), textModelID: "text", textProfile: profile)
+        var refused = false
+        do { _ = try await adapter.interpret(rtRequest()) }
+        catch PreconRuntimeError.unsupported(let reason) { refused = !reason.isEmpty }
+        #expect(refused, "The effective prompt must not enter automatic backend chunking")
+        let pipeline = try await rtPipeline(w, adapter)
+        let units = try await pipeline.run(w.sources())
+        #expect(units[0].status == .deferred)
+        #expect(try w.store.interpretation(units[0].id, in: w.project) == nil)
+        #expect(await runtime.calls.isEmpty)
+        #expect(await runtime.loads == 0)
     }
 }

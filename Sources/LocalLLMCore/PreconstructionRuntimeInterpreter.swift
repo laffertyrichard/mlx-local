@@ -34,17 +34,10 @@ public struct PreconRuntimeInterpreter: Sendable {
         return StableDigest.sha256(try JSONEncoder().encode(parts))
     }
 
-    /// Advisory only; execute remains the authority if another request changes headroom.
-    public func admissionReason() async -> String? {
-        let models = await manager.registeredModels()
-        let snapshot = await manager.snapshot(totalMemoryBytes: 0)
-        for id in [textModelID, imageModelID].compactMap({ $0 }) {
-            guard let model = models.first(where: { $0.id == id }) else { return "Unknown model \(id)" }
-            if !snapshot.loadedModelIDs.contains(id), model.approximateMemoryBytes > snapshot.availableMemoryBytes {
-                return "Model \(id) needs about \(model.approximateMemoryBytes) bytes; headroom is \(snapshot.availableMemoryBytes)"
-            }
-        }
-        return nil
+    public func pipeline(store: PreconProjectStore, project: URL) async throws -> InterpretationPipeline {
+        var pipeline = InterpretationPipeline(store: store, project: project, interpreter: interpret)
+        pipeline.profileDigest = try await profileDigest()
+        return pipeline
     }
 
     public func interpret(_ input: InterpretationRequest) async throws -> String {
@@ -71,6 +64,18 @@ public struct PreconRuntimeInterpreter: Sendable {
                                    createdAt: Date(timeIntervalSince1970: 0))
         }
         profile?.generation.maxOutputTokens = input.maxOutputTokens
+        var effectivePrompt = ""
+        if let system = profile?.systemPrompt, !system.isEmpty { effectivePrompt += system + "\n\n" }
+        if let instruction = profile?.taskInstruction, !instruction.isEmpty { effectivePrompt += instruction + "\n\n" }
+        if let examples = profile?.fewShotExamples, !examples.isEmpty {
+            effectivePrompt += "Examples:\n" + examples.joined(separator: "\n---\n") + "\n\n"
+        }
+        if input.stage == .ocr { effectivePrompt += "Extract the text content from this image.\n\n" }
+        effectivePrompt += input.instruction + "\n" + (input.text ?? "") + "\nReturn only valid JSON."
+        // ponytail: mirrors RouterRuntimes.swift:121,206-237; share prompt/threshold policy if that backend changes.
+        if model.backend == .mlxLM, effectivePrompt.count > max(8_000, model.contextWindow * 3) {
+            throw PreconRuntimeError.unsupported("Effective prompt exceeds the single-call backend limit; shorten the profile or input")
+        }
         let snapshot = await manager.snapshot(totalMemoryBytes: 0)
         if !snapshot.loadedModelIDs.contains(id), model.approximateMemoryBytes > snapshot.availableMemoryBytes {
             throw PreconRuntimeError.resourceRefused("Model \(id) needs about \(model.approximateMemoryBytes) bytes; headroom is \(snapshot.availableMemoryBytes)")

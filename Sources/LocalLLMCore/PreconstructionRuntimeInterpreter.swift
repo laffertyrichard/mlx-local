@@ -9,6 +9,38 @@ public enum PreconRuntimeError: Error, Equatable, LocalizedError {
     }
 }
 
+
+/// One waiter owns this race, not the manager's shared load.
+private final class InterpretationExecutionWait: @unchecked Sendable {
+    private let lock = NSLock()
+    private var continuation: CheckedContinuation<ExecutionTrace, Error>?
+    private var task: Task<Void, Never>?
+    private var result: Result<ExecutionTrace, Error>?
+
+    func install(_ continuation: CheckedContinuation<ExecutionTrace, Error>) {
+        lock.lock()
+        if let result { lock.unlock(); continuation.resume(with: result) }
+        else { self.continuation = continuation; lock.unlock() }
+    }
+    func install(_ task: Task<Void, Never>) {
+        lock.lock()
+        let finished = result != nil
+        if !finished { self.task = task }
+        lock.unlock()
+        if finished { task.cancel() }
+    }
+    func finish(_ result: Result<ExecutionTrace, Error>, cancel: Bool = false) {
+        lock.lock()
+        guard self.result == nil else { lock.unlock(); return }
+        self.result = result
+        let continuation = self.continuation, task = self.task
+        self.continuation = nil; self.task = nil
+        lock.unlock()
+        if cancel { task?.cancel() }
+        continuation?.resume(with: result)
+    }
+}
+
 public struct PreconRuntimeInterpreter: Sendable {
     public let manager: ModelResourceManager
     public let textModelID: String?
@@ -95,7 +127,24 @@ public struct PreconRuntimeInterpreter: Sendable {
         let decision = RoutingDecision(requestID: request.id, requirements: requirements, stages: [stage],
                                        reason: "Explicit preconstruction model selection")
         do {
-            let trace = try await manager.execute(decision: decision, request: request)
+            let wait = InterpretationExecutionWait()
+            // ponytail: cancel this waiter promptly, not the shared cold load; runtime entry may still occur
+            // after loading and must honor cancellation. Idle-load reclamation remains the manager's policy.
+            let trace = try await withTaskCancellationHandler {
+                try await withCheckedThrowingContinuation { continuation in
+                    wait.install(continuation)
+                    let execution = Task {
+                        do {
+                            try Task.checkCancellation()
+                            let trace = try await manager.execute(decision: decision, request: request)
+                            wait.finish(.success(trace))
+                        } catch { wait.finish(.failure(error)) }
+                    }
+                    wait.install(execution)
+                }
+            } onCancel: {
+                wait.finish(.failure(CancellationError()), cancel: true)
+            }
             try Task.checkCancellation()
             guard let artifact = trace.artifacts.last else { throw PreconRuntimeError.runtimeFailed("No artifact returned") }
             return artifact.content

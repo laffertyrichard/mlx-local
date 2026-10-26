@@ -63,6 +63,40 @@ private actor RtPause {
     func wait() async { if !started { await withCheckedContinuation { waiter = $0 } } }
 }
 
+
+private actor ColdLoadRuntime: ModelRuntime {
+    nonisolated let backend: InferenceBackend = .mlxLM
+    var loadCount = 0
+    var executions = 0
+    var cancelledEntries = 0
+    var releaseLoad: CheckedContinuation<Void, Never>?
+    var loadStarted: CheckedContinuation<Void, Never>?
+    var cancelledEntered: CheckedContinuation<Void, Never>?
+    func load(model: RegisteredModel) async throws {
+        loadCount += 1
+        await withCheckedContinuation { releaseLoad = $0; loadStarted?.resume(); loadStarted = nil }
+    }
+    func waitForLoad() async { if loadCount == 0 { await withCheckedContinuation { loadStarted = $0 } } }
+    func release() { releaseLoad?.resume(); releaseLoad = nil }
+    func waitForCancelledEntry() async {
+        if cancelledEntries == 0 { await withCheckedContinuation { cancelledEntered = $0 } }
+    }
+    func unload(model: RegisteredModel) async {}
+    func health(model: RegisteredModel) async -> ModelHealth { .healthy }
+    func execute(model: RegisteredModel?, stage: RouteStage, input: StageExecutionInput) async throws -> PipelineArtifact {
+        if Task.isCancelled {
+            cancelledEntries += 1; cancelledEntered?.resume(); cancelledEntered = nil
+            throw CancellationError()
+        }
+        executions += 1
+        return PipelineArtifact(kind: .json, content: rtAnswer)
+    }
+}
+private actor CancellationObserved {
+    var returned = false
+    func mark() { returned = true }
+}
+
 private func rtModel(_ id: String = "text", capabilities: Set<Capability> = [.reasoning],
                      health: ModelHealth = .healthy) -> RegisteredModel {
     RegisteredModel(id: id, backend: .mlxLM, localPath: URL(filePath: "/nonexistent/mock-\(id)"), family: "mock",
@@ -371,5 +405,46 @@ struct PreconstructionRuntimeTests {
         let units = try await pipeline.run(w.sources())
         #expect(units[0].status == .complete)
         #expect(await runtime.calls.map { $0.0.modelID } == ["text"])
+    }
+
+    @Test("S21/C4-01: cold-load cancellation returns promptly while a live waiter shares the load")
+    func cancelColdLoad() async throws {
+        let w = try RtWorkspace(); defer { w.cleanUp() }
+        let sources = try w.sources()
+        let runtime = ColdLoadRuntime()
+        let manager = ModelResourceManager(registry: .init(models: [rtModel()]), runtimes: [.mlxLM: runtime], memoryBudgetBytes: 1000)
+        let adapter = PreconRuntimeInterpreter(manager: manager, textModelID: "text")
+        let pipeline = try await adapter.pipeline(store: w.store, project: w.project)
+        let observation = CancellationObserved()
+        let cancelled = Task {
+            let units = try await pipeline.run(sources)
+            await observation.mark()
+            return units
+        }
+        await runtime.waitForLoad()
+        let liveStarted = RtPause()
+        let liveRequest = InferenceRequest(text: "live", requiresStructuredOutput: true)
+        let decision = RoutingDecision(requestID: liveRequest.id,
+            requirements: .init(category: .reasoning, requiredCapabilities: [.reasoning], inputModalities: [.text]),
+            stages: [.init(kind: .reasoning, modelID: "text", backend: .mlxLM, requiredCapabilities: [.reasoning], inputModalities: [.text])], reason: "MOCK live waiter")
+        let live = Task { try await manager.execute(decision: decision, request: liveRequest, onEvent: { event in
+            if case .stageStarted = event { await liveStarted.signal() }
+        }) }
+        await liveStarted.wait()
+        cancelled.cancel()
+        // The load stays suspended; this bound observes prompt cancellation without releasing it to make the test pass.
+        try await Task.sleep(for: .milliseconds(200))
+        #expect(await observation.returned, "Cancelled page must return before the shared load is released")
+        #expect(await runtime.executions == 0)
+        #expect(try w.store.interpretation(pipeline.unitID(sources[0], focus: nil), in: w.project) == nil)
+        await runtime.release()
+        let units = try await cancelled.value
+        #expect(units.count == 1 && units[0].status == .deferred)
+        _ = try await live.value
+        await runtime.waitForCancelledEntry()
+        #expect(await runtime.loadCount == 1)
+        #expect(await runtime.executions == 1, "Only the live waiter may perform effective inference")
+        #expect(await runtime.cancelledEntries == 1, "Manager may enter execute, but cancellation-aware runtime refuses work")
+        #expect(try w.store.interpretation(units[0].id, in: w.project) == nil)
     }
 }

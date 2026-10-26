@@ -327,6 +327,7 @@ struct PreconstructionCloseoutTests {
         #expect(csFiles(project, under: "revisions").isEmpty)
         #expect(csFiles(project, under: "checkpoints") == baselineCheckpoints)
 
+        #expect(try store.canReuseRevisionID(bundle.revision, measurements: bundle.files, in: project))
         store.beforeWrite = csFailAt("checkpoints/R1")
         #expect(throws: CsFailure.self) {
             _ = try store.saveRevision(bundle.revision, measurements: bundle.files, in: project, at: csDate(1))
@@ -339,6 +340,7 @@ struct PreconstructionCloseoutTests {
             ($0, try StableDigest.file(project.appending(path: $0)))
         })
 
+        #expect(try store.canReuseRevisionID(bundle.revision, measurements: bundle.files, in: project))
         store.beforeWrite = nil
         let checkpointURL = try store.saveRevision(bundle.revision, measurements: bundle.files, in: project, at: csDate(2))
         #expect(csSaveFiles(project, under: "measurements") == measurementNames)
@@ -462,6 +464,81 @@ struct PreconstructionCloseoutTests {
             #expect(try reopened.resume(from: latestCheckpoint, in: project).0 == latest.revision)
             #expect(try reopened.resume(from: firstCheckpoint, in: project).0 == first.revision)
         }
+    }
+
+
+    @Test("C1-01: deleting the last count after a partial R2 save requires R3")
+    func deletedCountRequiresFreshID() throws {
+        let workspace = try CsWorkspace()
+        defer { workspace.cleanUp() }
+        let project = try workspace.project()
+        let source = try csImportedDraft(workspace, project: project).source
+        var empty = PreconRevision(revisionId: "R1", synthetic: true)
+        empty.sources = [source]
+        _ = try workspace.store.saveRevision(empty, measurements: [], in: project, at: csDate(0))
+        var draft = TakeoffMeasurements(source: source)
+        draft.counts = [.init(id: "C1", physicalItemId: "Fixture1", pt: [20, 20])]
+        var partial = empty
+        partial.revisionId = "R2"
+        partial.quantities = TakeoffMeasurements.quantities(across: [draft])
+        let name = "R2-\(source.id)-measurements.json"
+        let files = [(name: name, data: try PreconJSON.encoder.encode(draft))]
+        #expect(try workspace.store.canReuseRevisionID(partial, measurements: files, in: project))
+        var broken = workspace.store
+        broken.beforeWrite = csFailAt("revisions/R2.json")
+        #expect(throws: CsFailure.self) {
+            _ = try broken.saveRevision(partial, measurements: files, in: project, at: csDate(1))
+        }
+        let abandonedPath = "measurements/\(name)"
+        let before = try StableDigest.file(project.appending(path: abandonedPath))
+        #expect(try workspace.store.canReuseRevisionID(partial, measurements: files, in: project))
+        var changed = empty
+        changed.revisionId = "R2"
+        #expect(try PreconJSON.encoder.encode(changed) != PreconJSON.encoder.encode(partial))
+        #expect(try !workspace.store.canReuseRevisionID(changed, measurements: [], in: project))
+        changed.revisionId = "R3" // Next unused ID; the controller allocator remains a native-target path.
+        #expect(changed.revisionId == "R3")
+        let checkpointURL = try workspace.store.saveRevision(changed, measurements: [], in: project, at: csDate(2))
+        #expect(try StableDigest.file(project.appending(path: abandonedPath)) == before)
+        #expect(csFiles(project, under: "revisions") == ["R1.json", "R3.json"])
+        #expect(csCheckpoints(project, id: "R2").isEmpty)
+        let (saved, checkpoint) = try workspace.store.resume(from: checkpointURL, in: project)
+        #expect(saved == changed)
+        #expect(saved.quantities.isEmpty && saved.calibrations.isEmpty && saved.checks.isEmpty)
+        #expect(checkpoint.revisionId == "R3" && checkpoint.measurementDigests.isEmpty)
+        #expect(!checkpoint.sourceDigests.keys.contains(abandonedPath))
+        #expect(!saved.sources.map(\.path).contains(abandonedPath))
+    }
+
+    @Test("C1-01: a changed file set cannot reuse an abandoned revision ID")
+    func changedFileSetRequiresFreshID() throws {
+        let workspace = try CsWorkspace()
+        defer { workspace.cleanUp() }
+        let project = try workspace.project()
+        let bundle = try csBundle("R2", draft: csImportedDraft(workspace, project: project))
+        var broken = workspace.store
+        broken.beforeWrite = csFailAt("revisions/R2.json")
+        #expect(throws: CsFailure.self) {
+            _ = try broken.saveRevision(bundle.revision, measurements: bundle.files, in: project, at: csDate(0))
+        }
+        let renamed = bundle.files.map { (name: "R2-new-\($0.name)", data: $0.data) }
+        #expect(try !workspace.store.canReuseRevisionID(bundle.revision, measurements: renamed, in: project))
+        #expect(try !workspace.store.canReuseRevisionID(bundle.revision, measurements: Array(bundle.files.prefix(1)), in: project))
+        #expect(try workspace.store.canReuseRevisionID(bundle.revision, measurements: bundle.files, in: project))
+        var changedBytes = bundle.files
+        changedBytes[0].data.append(0x20)
+        #expect(try !workspace.store.canReuseRevisionID(bundle.revision, measurements: changedBytes, in: project))
+        broken.beforeWrite = csFailAt("checkpoints/R2")
+        #expect(throws: CsFailure.self) {
+            _ = try broken.saveRevision(bundle.revision, measurements: bundle.files, in: project, at: csDate(1))
+        }
+        var changedRevision = bundle.revision
+        changedRevision.synthetic = false
+        #expect(try !workspace.store.canReuseRevisionID(changedRevision, measurements: bundle.files, in: project))
+        #expect(try workspace.store.canReuseRevisionID(bundle.revision, measurements: bundle.files, in: project))
+        _ = try workspace.store.saveRevision(bundle.revision, measurements: bundle.files, in: project, at: csDate(2))
+        #expect(try !workspace.store.canReuseRevisionID(bundle.revision, measurements: bundle.files, in: project),
+                "A completed checkpoint reserves its ID, even for identical bytes")
     }
 
     // MARK: - Mixed-scale refusal matrix

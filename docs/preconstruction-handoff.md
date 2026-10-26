@@ -92,7 +92,7 @@ Branch `fix/interpretation-integrity` (baseline commit `c1aa1aa` = session 3 wor
 | F01 | Symlinked child dirs (`measurements/`, `revisions/`, `checkpoints/`, `interpretation/`, `sources/<hash>/`) let writes escape the root: `resolvingSymlinksInPath` leaves a missing leaf unresolved | Fixed: `contained` resolves the deepest existing ancestor and refuses dangling links; every write goes through it |
 | F02 | A saved interpretation unit was returned before the PDF was re-hashed | Fixed: current bytes are hashed before any saved unit is used |
 | F03 | Prompt text not in unit identity | Fixed: instructions are pipeline properties digested into the ID; version bumped (now `precon-interpret-4`) for code-side rule changes |
-| F04 | A failed save part-way left files that write-once refused on retry | Fixed: `PreconProjectStore.saveRevision(_:measurements:in:)` writes the checkpoint last; identical bytes are reused on retry; changed work moves to a fresh revision ID (view) |
+| F04 | A failed save part-way left files that write-once refused on retry | Fixed: `PreconProjectStore.saveRevision(_:measurements:in:)` writes the checkpoint last; identical bytes are reused on retry; changed work is detected by a tested core bundle-compatibility helper, including removed measurement files; controller wiring and the native walkthrough remain untested |
 | F05 | Corrupt files reported as stale | Fixed: `PreconProjectError.corrupt`; the view still shows the recovery choices |
 | F06 | `VisionFocus` short/NaN/inf rects crashed the process | Fixed: shape, finiteness, size, page bounds and known source checked before any call (`TakeoffError.invalidGeometry`) |
 | F07 | m/in/mm plane areas labelled SF unconverted | Fixed: squared length factor; unknown units still throw |
@@ -129,7 +129,7 @@ Next real-model gate (not started, needs explicit authorization and a quiet wind
 
 - A11 guard: recalibrating a page that already has traced areas or routes is refused when the new witness disagrees with the established scale (`TakeoffError.unsupportedMixedScale`). Counts-only pages, untraced pages and pages whose calibration is already in conflict can still be recalibrated. A11 stays blocked and unaccepted.
 - Save seam: `PreconProjectStore.beforeWrite`, wired from `PRECONSTRUCTION_TEST_FAIL_SAVE` in debug builds only. Core tests use it to fail each write stage; the running-app walkthrough that uses it is still open (Next steps, item 0).
-- Tests on this branch: 85 = the 71 above + 2 corrective (seam stages, A11 guard) + 12 OpenCode closeout tests (`PreconstructionCloseoutTests.swift`: failure/retry at every stage, changed-byte retry, repeated failure, fresh-ID save, mixed-scale refusal matrix).
+- Original closeout: 85 tests; three production-bundle tests and two C1-01 regressions bring this branch to 90. R-b core helper tests cover removed/renamed file sets and unchanged partial retries; controller wiring and the native walkthrough remain untested.
 - Memory (PR #2) qualifications are on `fix/memory-accounting`: reservations use registry estimates rather than measured peaks; active-model KV growth is not attributed per model; no real-model memory evaluation has been done.
 
 ## Next steps (in order)

@@ -316,6 +316,9 @@ final class TakeoffController: ObservableObject {
             files.append(("\(name)-measurements.json", try PreconJSON.encoder.encode(draft)))
             if let plane = draft.plane { files.append(("\(name)-plane.json", try PreconJSON.encoder.encode(plane))) }
         }
+        guard try store.canReuseRevisionID(saved, measurements: files, in: project) else {
+            throw PreconProjectError.alreadyExists(saved.revisionId)
+        }
         _ = try store.saveRevision(saved, measurements: files, in: project)
         revision = saved
         dirty = false
@@ -344,9 +347,9 @@ final class TakeoffController: ObservableObject {
         return String(format: "%@%02d", prefix, (used.max() ?? 0) + 1)
     }
 
-    /// Skips IDs used by revisions and by measurement files a failed save may have left without a revision.
+    /// Skips IDs used by revisions, partial measurement files, or completed checkpoints.
     private func nextRevisionID(in project: URL) -> String {
-        let names = ["revisions", "measurements"].flatMap {
+        let names = ["revisions", "measurements", "checkpoints"].flatMap {
             (try? FileManager.default.contentsOfDirectory(atPath: project.appending(path: $0).path)) ?? []
         }
         let used = names.compactMap { name in name.wholeMatch(of: /R(\d+)(?:\.json|-.*)/).flatMap { Int($0.1) } }

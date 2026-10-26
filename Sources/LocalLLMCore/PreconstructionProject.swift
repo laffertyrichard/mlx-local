@@ -104,6 +104,32 @@ public struct PreconProjectStore: Sendable {
         return "measurements/\(name)"
     }
 
+    /// An unused ID is safe, as is a retry whose on-disk files are an identical subset of this bundle.
+    /// Extra files (including files removed from the draft) mean changed work must get a fresh ID.
+    public func canReuseRevisionID(_ revision: PreconRevision, measurements: [(name: String, data: Data)],
+                                   in project: URL) throws -> Bool {
+        try Self.requireSafeName(revision.revisionId)
+        let project = try contained(project)
+        var expected = ["revisions/\(revision.revisionId).json": try PreconJSON.encoder.encode(revision)]
+        for item in measurements {
+            try Self.requireSafeName(item.name)
+            expected["measurements/\(item.name)"] = item.data
+        }
+        let id = revision.revisionId
+        for directory in ["measurements", "revisions", "checkpoints"] {
+            let folder = try contained(project.appending(path: directory))
+            guard FileManager.default.fileExists(atPath: folder.path) else { continue }
+            let names = try FileManager.default.contentsOfDirectory(atPath: folder.path)
+            for name in names where directory == "revisions" ? name == "\(id).json" : name.hasPrefix("\(id)-") {
+                let path = "\(directory)/\(name)"
+                let url = try contained(project.appending(path: path))
+                // A checkpoint is a completed-save marker, not a partial bundle file to reuse.
+                guard let data = expected[path], try Data(contentsOf: url) == data else { return false }
+            }
+        }
+        return true
+    }
+
     /// One save: measurement files, then the revision, then the checkpoint last. Only a checkpoint marks a revision
     /// complete, so a failure part-way never exposes a completed result. A retry with identical bytes reuses what the
     /// failed attempt already wrote; different bytes under an existing name still refuse (the caller picks a new ID).

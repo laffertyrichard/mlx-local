@@ -16,7 +16,7 @@ final class AutoRouterController: ObservableObject {
     private let router = CapabilityRouter()
     private var registry: ModelRegistry
     private var profileRegistry: ModelProfileRegistry
-    private let manager: ModelResourceManager
+    let manager: ModelResourceManager
     let storageRoot = FileManager.default.homeDirectoryForCurrentUser.appending(path: "Library/Application Support/MLXMenu")
 
     init() {

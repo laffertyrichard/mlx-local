@@ -1,0 +1,652 @@
+{
+  "package_version": "0.1.0",
+  "assembled_on": "2026-10-19",
+  "source_files": [
+    {
+      "package_path": "skills/plan-area-takeoff/SKILL.md",
+      "source_path": "${HOME}/projects/takeoff-skill-codex/.agents/skills/plan-area-takeoff/SKILL.md",
+      "source_sha256": "5be184d330a873c44cb69cae6b4257f24d0203685058288d203503b182149a27",
+      "packaged_sha256": "5be184d330a873c44cb69cae6b4257f24d0203685058288d203503b182149a27",
+      "treatment": "verbatim reusable source"
+    },
+    {
+      "package_path": "skills/plan-area-takeoff/agents/openai.yaml",
+      "source_path": "${HOME}/projects/takeoff-skill-codex/.agents/skills/plan-area-takeoff/agents/openai.yaml",
+      "source_sha256": "9dccaa4a748c9a469cf3c07720e2f73aa41aca782c93910486fc77575cd6e8be",
+      "packaged_sha256": "9dccaa4a748c9a469cf3c07720e2f73aa41aca782c93910486fc77575cd6e8be",
+      "treatment": "verbatim reusable source"
+    },
+    {
+      "package_path": "skills/plan-area-takeoff/assets/icon.svg",
+      "source_path": "${HOME}/projects/takeoff-skill-codex/.agents/skills/plan-area-takeoff/assets/icon.svg",
+      "source_sha256": "fbb6c7314886573cd56c3f86884a65afe3b5f4ce4bf1ee6baeeeb1fa50aea7a4",
+      "packaged_sha256": "fbb6c7314886573cd56c3f86884a65afe3b5f4ce4bf1ee6baeeeb1fa50aea7a4",
+      "treatment": "verbatim reusable source"
+    },
+    {
+      "package_path": "skills/plan-area-takeoff/references/building-finishes.md",
+      "source_path": "${HOME}/projects/takeoff-skill-codex/.agents/skills/plan-area-takeoff/references/building-finishes.md",
+      "source_sha256": "997defc8f2740d422525d11cfbd7dcc47350dd8bb8791cb00cae3a291826f120",
+      "packaged_sha256": "997defc8f2740d422525d11cfbd7dcc47350dd8bb8791cb00cae3a291826f120",
+      "treatment": "verbatim reusable source"
+    },
+    {
+      "package_path": "skills/plan-area-takeoff/references/cabinetry.md",
+      "source_path": "${HOME}/projects/takeoff-skill-codex/.agents/skills/plan-area-takeoff/references/cabinetry.md",
+      "source_sha256": "e717153c4e7a59f8266c89917c8f2fbbc293d0dc0bdac5414d3320877df26b21",
+      "packaged_sha256": "e717153c4e7a59f8266c89917c8f2fbbc293d0dc0bdac5414d3320877df26b21",
+      "treatment": "verbatim reusable source"
+    },
+    {
+      "package_path": "skills/plan-area-takeoff/references/cad-intake.md",
+      "source_path": "${HOME}/projects/takeoff-skill-codex/.agents/skills/plan-area-takeoff/references/cad-intake.md",
+      "source_sha256": "f37453fa03ea888019444b4126bf9ace3758e9a4a048237814bfccd48cc786ba",
+      "packaged_sha256": "f37453fa03ea888019444b4126bf9ace3758e9a4a048237814bfccd48cc786ba",
+      "treatment": "verbatim reusable source"
+    },
+    {
+      "package_path": "skills/plan-area-takeoff/references/ceilings-and-electrical.md",
+      "source_path": "${HOME}/projects/takeoff-skill-codex/.agents/skills/plan-area-takeoff/references/ceilings-and-electrical.md",
+      "source_sha256": "68e046bfa16fdea75ce9135210227e49790ba81d9b2de2ca02882c4a07257c16",
+      "packaged_sha256": "68e046bfa16fdea75ce9135210227e49790ba81d9b2de2ca02882c4a07257c16",
+      "treatment": "verbatim reusable source"
+    },
+    {
+      "package_path": "skills/plan-area-takeoff/references/concrete-and-framing.md",
+      "source_path": "${HOME}/projects/takeoff-skill-codex/.agents/skills/plan-area-takeoff/references/concrete-and-framing.md",
+      "source_sha256": "e592ff71bdf11e745505f875b05f2a42ac9a4e27e8ef6fea6fabfb5f1414b7bf",
+      "packaged_sha256": "e592ff71bdf11e745505f875b05f2a42ac9a4e27e8ef6fea6fabfb5f1414b7bf",
+      "treatment": "verbatim reusable source"
+    },
+    {
+      "package_path": "skills/plan-area-takeoff/references/demolition-and-restoration.md",
+      "source_path": "${HOME}/projects/takeoff-skill-codex/.agents/skills/plan-area-takeoff/references/demolition-and-restoration.md",
+      "source_sha256": "e871fd29c6119068f78cc54280a80bfcde7aec70415ddf5ca96668eb0c23ec19",
+      "packaged_sha256": "e871fd29c6119068f78cc54280a80bfcde7aec70415ddf5ca96668eb0c23ec19",
+      "treatment": "verbatim reusable source"
+    },
+    {
+      "package_path": "skills/plan-area-takeoff/references/design-coordination.md",
+      "source_path": "${HOME}/projects/takeoff-skill-codex/.agents/skills/plan-area-takeoff/references/design-coordination.md",
+      "source_sha256": "ef742d29b6ed8aa81e6de29616d9e29eb5aba022d9b7f34ea32d0a4ee0970306",
+      "packaged_sha256": "ef742d29b6ed8aa81e6de29616d9e29eb5aba022d9b7f34ea32d0a4ee0970306",
+      "treatment": "verbatim reusable source"
+    },
+    {
+      "package_path": "skills/plan-area-takeoff/references/flooring.md",
+      "source_path": "${HOME}/projects/takeoff-skill-codex/.agents/skills/plan-area-takeoff/references/flooring.md",
+      "source_sha256": "602a882ef6492ca5f65b4af6749e6561c928822d5edda2c09d37b0b32fe81c60",
+      "packaged_sha256": "602a882ef6492ca5f65b4af6749e6561c928822d5edda2c09d37b0b32fe81c60",
+      "treatment": "verbatim reusable source"
+    },
+    {
+      "package_path": "skills/plan-area-takeoff/references/geometry-and-delivery.md",
+      "source_path": "${HOME}/projects/takeoff-skill-codex/.agents/skills/plan-area-takeoff/references/geometry-and-delivery.md",
+      "source_sha256": "d9176d8d8e9718bd276b28bf8320acff0a5b6c8544253a06675adcbbe6ef56cc",
+      "packaged_sha256": "d9176d8d8e9718bd276b28bf8320acff0a5b6c8544253a06675adcbbe6ef56cc",
+      "treatment": "verbatim reusable source"
+    },
+    {
+      "package_path": "skills/plan-area-takeoff/references/infrastructure-reuse.md",
+      "source_path": "${HOME}/projects/takeoff-skill-codex/.agents/skills/plan-area-takeoff/references/infrastructure-reuse.md",
+      "source_sha256": "9128580129cc0bbb10364fb5aa2020d62e3626b820031afa4288c12fe3901025",
+      "packaged_sha256": "9128580129cc0bbb10364fb5aa2020d62e3626b820031afa4288c12fe3901025",
+      "treatment": "verbatim reusable source"
+    },
+    {
+      "package_path": "skills/plan-area-takeoff/references/irregular-sites-and-callout-audit.md",
+      "source_path": "${HOME}/projects/takeoff-skill-codex/.agents/skills/plan-area-takeoff/references/irregular-sites-and-callout-audit.md",
+      "source_sha256": "6644f527154b06f9cd2bd0960726a7c50e334184d37ce15b8693e28bf8c6d29f",
+      "packaged_sha256": "6644f527154b06f9cd2bd0960726a7c50e334184d37ce15b8693e28bf8c6d29f",
+      "treatment": "verbatim reusable source"
+    },
+    {
+      "package_path": "skills/plan-area-takeoff/references/material-ordering.md",
+      "source_path": "${HOME}/projects/takeoff-skill-codex/.agents/skills/plan-area-takeoff/references/material-ordering.md",
+      "source_sha256": "20a871d8da91fcecf11edd33c19f790831f15c7bba3f4ee3bba4d0faf7e1111e",
+      "packaged_sha256": "20a871d8da91fcecf11edd33c19f790831f15c7bba3f4ee3bba4d0faf7e1111e",
+      "treatment": "verbatim reusable source"
+    },
+    {
+      "package_path": "skills/plan-area-takeoff/references/openings-and-glazing.md",
+      "source_path": "${HOME}/projects/takeoff-skill-codex/.agents/skills/plan-area-takeoff/references/openings-and-glazing.md",
+      "source_sha256": "1c7cd749a2df41a373accb71fe126c1ac24b48c168853a6d39a14903412f0319",
+      "packaged_sha256": "1c7cd749a2df41a373accb71fe126c1ac24b48c168853a6d39a14903412f0319",
+      "treatment": "verbatim reusable source"
+    },
+    {
+      "package_path": "skills/plan-area-takeoff/references/plan-comparison.md",
+      "source_path": "${HOME}/projects/takeoff-skill-codex/.agents/skills/plan-area-takeoff/references/plan-comparison.md",
+      "source_sha256": "f0cdc30d0644e5a496a49d1b1e4286a837e199cb2d4216daab139bc21a665220",
+      "packaged_sha256": "f0cdc30d0644e5a496a49d1b1e4286a837e199cb2d4216daab139bc21a665220",
+      "treatment": "verbatim reusable source"
+    },
+    {
+      "package_path": "skills/plan-area-takeoff/references/revision-deltas.md",
+      "source_path": "${HOME}/projects/takeoff-skill-codex/.agents/skills/plan-area-takeoff/references/revision-deltas.md",
+      "source_sha256": "02cf8fe7da21bf3d5133a50eff27567b3d791685c73aa78d04190d7768a66614",
+      "packaged_sha256": "02cf8fe7da21bf3d5133a50eff27567b3d791685c73aa78d04190d7768a66614",
+      "treatment": "verbatim reusable source"
+    },
+    {
+      "package_path": "skills/plan-area-takeoff/references/scope-matching.md",
+      "source_path": "${HOME}/projects/takeoff-skill-codex/.agents/skills/plan-area-takeoff/references/scope-matching.md",
+      "source_sha256": "b723f6dbdca01d66bdc7eeabdec13f6aedeadfb11511993b82c0c0c5e52512a6",
+      "packaged_sha256": "b723f6dbdca01d66bdc7eeabdec13f6aedeadfb11511993b82c0c0c5e52512a6",
+      "treatment": "verbatim reusable source"
+    },
+    {
+      "package_path": "skills/plan-area-takeoff/references/sitework.md",
+      "source_path": "${HOME}/projects/takeoff-skill-codex/.agents/skills/plan-area-takeoff/references/sitework.md",
+      "source_sha256": "d340d505744540761cca97f492a2c6651ef41609139e8066ab7a87ba2c0dc875",
+      "packaged_sha256": "d340d505744540761cca97f492a2c6651ef41609139e8066ab7a87ba2c0dc875",
+      "treatment": "verbatim reusable source"
+    },
+    {
+      "package_path": "skills/plan-area-takeoff/references/slab-surfaces.md",
+      "source_path": "${HOME}/projects/takeoff-skill-codex/.agents/skills/plan-area-takeoff/references/slab-surfaces.md",
+      "source_sha256": "ab804f05e0ea4a0c79925a6bddf8a86f26355c17eea1d634bd2d9d94700660b4",
+      "packaged_sha256": "ab804f05e0ea4a0c79925a6bddf8a86f26355c17eea1d634bd2d9d94700660b4",
+      "treatment": "verbatim reusable source"
+    },
+    {
+      "package_path": "skills/plan-area-takeoff/references/specifications.md",
+      "source_path": "${HOME}/projects/takeoff-skill-codex/.agents/skills/plan-area-takeoff/references/specifications.md",
+      "source_sha256": "3769b192bc924f7a0972458f57a714ab17923abe21aaabc54421e3c29cfbb95c",
+      "packaged_sha256": "3769b192bc924f7a0972458f57a714ab17923abe21aaabc54421e3c29cfbb95c",
+      "treatment": "verbatim reusable source"
+    },
+    {
+      "package_path": "skills/plan-area-takeoff/references/stairs-and-railings.md",
+      "source_path": "${HOME}/projects/takeoff-skill-codex/.agents/skills/plan-area-takeoff/references/stairs-and-railings.md",
+      "source_sha256": "a5310350df377a0ddad0cae6385025118f1881a387044a96f621bccc829ce3b7",
+      "packaged_sha256": "a5310350df377a0ddad0cae6385025118f1881a387044a96f621bccc829ce3b7",
+      "treatment": "verbatim reusable source"
+    },
+    {
+      "package_path": "skills/plan-area-takeoff/references/tile-and-niches.md",
+      "source_path": "${HOME}/projects/takeoff-skill-codex/.agents/skills/plan-area-takeoff/references/tile-and-niches.md",
+      "source_sha256": "ff27f043b6b01450691dbb352a07df474599bcd879a88f8253ba299c1a818582",
+      "packaged_sha256": "ff27f043b6b01450691dbb352a07df474599bcd879a88f8253ba299c1a818582",
+      "treatment": "verbatim reusable source"
+    },
+    {
+      "package_path": "skills/plan-area-takeoff/references/waterproofing-and-accessories.md",
+      "source_path": "${HOME}/projects/takeoff-skill-codex/.agents/skills/plan-area-takeoff/references/waterproofing-and-accessories.md",
+      "source_sha256": "9f3bf3363ff85cfdb0795646ff5f239555b7b18de4ebbf2f2cc326a5ac3cbf0b",
+      "packaged_sha256": "9f3bf3363ff85cfdb0795646ff5f239555b7b18de4ebbf2f2cc326a5ac3cbf0b",
+      "treatment": "verbatim reusable source"
+    },
+    {
+      "package_path": "skills/plan-area-takeoff/scripts/cad.py",
+      "source_path": "${HOME}/projects/takeoff-skill-codex/.agents/skills/plan-area-takeoff/scripts/cad.py",
+      "source_sha256": "cc626abaa65bf476a5ce20bf2df983ef0f0331a40b7c73761697621f9a392952",
+      "packaged_sha256": "cc626abaa65bf476a5ce20bf2df983ef0f0331a40b7c73761697621f9a392952",
+      "treatment": "verbatim reusable source"
+    },
+    {
+      "package_path": "skills/plan-area-takeoff/scripts/geometry.py",
+      "source_path": "${HOME}/projects/takeoff-skill-codex/.agents/skills/plan-area-takeoff/scripts/geometry.py",
+      "source_sha256": "27c150e95449b5e3edce85d364d3f3f02afcc92ee89728969dd6ce5c89690886",
+      "packaged_sha256": "27c150e95449b5e3edce85d364d3f3f02afcc92ee89728969dd6ce5c89690886",
+      "treatment": "verbatim reusable source"
+    },
+    {
+      "package_path": "skills/plan-area-takeoff/scripts/test_cad.py",
+      "source_path": "${HOME}/projects/takeoff-skill-codex/.agents/skills/plan-area-takeoff/scripts/test_cad.py",
+      "source_sha256": "0e36e9b2820c1f02afdde7c247bd4e82cd9699dbd61657935907c54915672bbf",
+      "packaged_sha256": "0e36e9b2820c1f02afdde7c247bd4e82cd9699dbd61657935907c54915672bbf",
+      "treatment": "verbatim reusable source"
+    },
+    {
+      "package_path": "skills/plan-area-takeoff/scripts/test_geometry.py",
+      "source_path": "${HOME}/projects/takeoff-skill-codex/.agents/skills/plan-area-takeoff/scripts/test_geometry.py",
+      "source_sha256": "687e901c45dcfa84f13924df6fe3a302a37e2ce2c9f6d99446bfb8ab93f29afa",
+      "packaged_sha256": "687e901c45dcfa84f13924df6fe3a302a37e2ce2c9f6d99446bfb8ab93f29afa",
+      "treatment": "verbatim reusable source"
+    },
+    {
+      "package_path": "skills/takeoff-project-setup/SKILL.md",
+      "source_path": "${HOME}/projects/takeoff-skill-codex/.agents/skills/takeoff-project-setup/SKILL.md",
+      "source_sha256": "f8d84611912751bb802ae566d4e4eb9207ac476c50dddb388d88aafb8eef4dfc",
+      "packaged_sha256": "1641a9a2f986d569a5e3b9bb5f05f89676ad004179af5f5d9b2f09e80c205ea2",
+      "treatment": "portable source: authoring roots changed to explicit optional configuration; named concurrent work removed; portable/local-scope safety wording updated; historical references route to sanitized summary only; package template/instructions resolved independently of configured data root"
+    },
+    {
+      "package_path": "skills/takeoff-project-setup/agents/openai.yaml",
+      "source_path": "${HOME}/projects/takeoff-skill-codex/.agents/skills/takeoff-project-setup/agents/openai.yaml",
+      "source_sha256": "3e32301bd5f4e19487c3f54a7f3686496338e6ef88216fef52dfa0118fef8656",
+      "packaged_sha256": "963ac7e2a895155e18450338dd0de79e8a80da2df3a8adac03d030bdcceb3204",
+      "treatment": "verbatim reusable source; portable/local-scope safety wording updated; historical references route to sanitized summary only"
+    },
+    {
+      "package_path": "skills/takeoff-project-setup/references/recorded-workflow.md",
+      "source_path": "${HOME}/projects/takeoff-skill-codex/.agents/skills/takeoff-project-setup/references/recorded-workflow.md",
+      "source_sha256": "26b8b5654c1217a591292ace93503205ed0c522f7420173d9defca32de6690cf",
+      "packaged_sha256": "3e333b1e8c6dcd8cfa7bb4537d6c8b2dc8fec0a354b57ba54e5dc10a163e0513",
+      "treatment": "sanitized summary; all customer/activity examples removed"
+    },
+    {
+      "package_path": "skills/interior-design/SKILL.md",
+      "source_path": "${HOME}/.codex/skills/interior-design/SKILL.md",
+      "source_sha256": "ffd325d9760c2e332377278268d659cd8a22dcecb40b0b3ca2466540e61bb8e4",
+      "packaged_sha256": "ffd325d9760c2e332377278268d659cd8a22dcecb40b0b3ca2466540e61bb8e4",
+      "treatment": "verbatim reusable source"
+    },
+    {
+      "package_path": "skills/interior-design/agents/openai.yaml",
+      "source_path": "${HOME}/.codex/skills/interior-design/agents/openai.yaml",
+      "source_sha256": "c136c7283a78b38dba67b955c7be8198e755b6886281bfde77b4574bf4659e44",
+      "packaged_sha256": "c136c7283a78b38dba67b955c7be8198e755b6886281bfde77b4574bf4659e44",
+      "treatment": "verbatim reusable source"
+    },
+    {
+      "package_path": "skills/interior-design/references/fit-and-coordination.md",
+      "source_path": "${HOME}/.codex/skills/interior-design/references/fit-and-coordination.md",
+      "source_sha256": "ac3d3df47a287f17a12f95d0fc911a14453b473006b14e8de0eb06624a0b57f9",
+      "packaged_sha256": "ac3d3df47a287f17a12f95d0fc911a14453b473006b14e8de0eb06624a0b57f9",
+      "treatment": "verbatim reusable source"
+    },
+    {
+      "package_path": "skills/interior-design/references/principles.md",
+      "source_path": "${HOME}/.codex/skills/interior-design/references/principles.md",
+      "source_sha256": "ad43d0afa24ee085252015d345db9b421ca49d5a596d50db38d720ea3a2aefb5",
+      "packaged_sha256": "ad43d0afa24ee085252015d345db9b421ca49d5a596d50db38d720ea3a2aefb5",
+      "treatment": "verbatim reusable source"
+    },
+    {
+      "package_path": "skills/interior-design/references/sources.md",
+      "source_path": "${HOME}/.codex/skills/interior-design/references/sources.md",
+      "source_sha256": "74c6928b3abbe01580d32d3481cf23923ade48ede2faa9531f6a27aca206a38c",
+      "packaged_sha256": "74c6928b3abbe01580d32d3481cf23923ade48ede2faa9531f6a27aca206a38c",
+      "treatment": "verbatim reusable source"
+    },
+    {
+      "package_path": "skills/interior-design/references/workflow-integration.md",
+      "source_path": "${HOME}/.codex/skills/interior-design/references/workflow-integration.md",
+      "source_sha256": "0adf329aca4a5eb8d3b9adbb5d0d97619f2790344cf04abf737d384ecb2340a5",
+      "packaged_sha256": "280649e279d08beb9fab40685dd3155e3353a1b52894a484ee9da2741f79175d",
+      "treatment": "portable source: authoring roots changed to explicit optional configuration; named concurrent work removed"
+    },
+    {
+      "package_path": "skills/architectural-planning/SKILL.md",
+      "source_path": "${HOME}/.codex/skills/architectural-planning/SKILL.md",
+      "source_sha256": "94218dd3c51fb03cf86b4b99465157a42933ce9e5671762b20e88a6eaea44fda",
+      "packaged_sha256": "94218dd3c51fb03cf86b4b99465157a42933ce9e5671762b20e88a6eaea44fda",
+      "treatment": "verbatim reusable source"
+    },
+    {
+      "package_path": "skills/architectural-planning/agents/openai.yaml",
+      "source_path": "${HOME}/.codex/skills/architectural-planning/agents/openai.yaml",
+      "source_sha256": "fbd516b440fbee20c0acaadd1a2266dcfa473bd3a3c9fa5bb413f6093750a5d1",
+      "packaged_sha256": "fbd516b440fbee20c0acaadd1a2266dcfa473bd3a3c9fa5bb413f6093750a5d1",
+      "treatment": "verbatim reusable source"
+    },
+    {
+      "package_path": "skills/architectural-planning/references/planning-principles.md",
+      "source_path": "${HOME}/.codex/skills/architectural-planning/references/planning-principles.md",
+      "source_sha256": "90d78022b444777ae1e3caebf9b4e119baaef214ecaba8f64f1f673f037fcd46",
+      "packaged_sha256": "90d78022b444777ae1e3caebf9b4e119baaef214ecaba8f64f1f673f037fcd46",
+      "treatment": "verbatim reusable source"
+    },
+    {
+      "package_path": "skills/architectural-planning/references/remodel-coordination.md",
+      "source_path": "${HOME}/.codex/skills/architectural-planning/references/remodel-coordination.md",
+      "source_sha256": "33c3dba7782fb7a2b1dc4d3d3bfa7f0b4209c49b28f6cad116220e0f89a38d9b",
+      "packaged_sha256": "33c3dba7782fb7a2b1dc4d3d3bfa7f0b4209c49b28f6cad116220e0f89a38d9b",
+      "treatment": "verbatim reusable source"
+    },
+    {
+      "package_path": "skills/architectural-planning/references/sources.md",
+      "source_path": "${HOME}/.codex/skills/architectural-planning/references/sources.md",
+      "source_sha256": "b3143bee5c0f41f22a3900f5f7fc3a146a016a28311e2114655cf2f43e3f4330",
+      "packaged_sha256": "b3143bee5c0f41f22a3900f5f7fc3a146a016a28311e2114655cf2f43e3f4330",
+      "treatment": "verbatim reusable source"
+    },
+    {
+      "package_path": "skills/architectural-planning/references/workflow-integration.md",
+      "source_path": "${HOME}/.codex/skills/architectural-planning/references/workflow-integration.md",
+      "source_sha256": "951c5f4ca1f3946d0cb3f8f5a5309728cfb01bbd9e4303f9af64266550fd1a6b",
+      "packaged_sha256": "41bc278f1fc60a78d3c1165a85f659b96debbbde719388e62f230a828e5f010b",
+      "treatment": "portable source: authoring roots changed to explicit optional configuration; named concurrent work removed"
+    },
+    {
+      "package_path": "skills/building-code-review/SKILL.md",
+      "source_path": "${HOME}/.codex/skills/building-code-review/SKILL.md",
+      "source_sha256": "522a9eeedecd1de34074f6d5522f32f6a334070cb96ad51effb04389245e0866",
+      "packaged_sha256": "522a9eeedecd1de34074f6d5522f32f6a334070cb96ad51effb04389245e0866",
+      "treatment": "verbatim reusable source"
+    },
+    {
+      "package_path": "skills/building-code-review/agents/openai.yaml",
+      "source_path": "${HOME}/.codex/skills/building-code-review/agents/openai.yaml",
+      "source_sha256": "283681fd14d3604b9ab06d363ab845e7becf091998a0907d54dbe45dfd65d030",
+      "packaged_sha256": "283681fd14d3604b9ab06d363ab845e7becf091998a0907d54dbe45dfd65d030",
+      "treatment": "verbatim reusable source"
+    },
+    {
+      "package_path": "skills/building-code-review/references/arizona-starter-register.md",
+      "source_path": "${HOME}/.codex/skills/building-code-review/references/arizona-starter-register.md",
+      "source_sha256": "7a47ae60f22bd055606103e49f4f8bf92490a9d9db4020aa59e29976e0c7573e",
+      "packaged_sha256": "7a47ae60f22bd055606103e49f4f8bf92490a9d9db4020aa59e29976e0c7573e",
+      "treatment": "verbatim reusable source"
+    },
+    {
+      "package_path": "skills/building-code-review/references/evidence-matrix.md",
+      "source_path": "${HOME}/.codex/skills/building-code-review/references/evidence-matrix.md",
+      "source_sha256": "df077e76aec751c25fc3abb5aad0bf5b1937c95c66d59e123c3a304a52b24b55",
+      "packaged_sha256": "df077e76aec751c25fc3abb5aad0bf5b1937c95c66d59e123c3a304a52b24b55",
+      "treatment": "verbatim reusable source"
+    },
+    {
+      "package_path": "skills/building-code-review/references/jurisdiction-workflow.md",
+      "source_path": "${HOME}/.codex/skills/building-code-review/references/jurisdiction-workflow.md",
+      "source_sha256": "4abac34b90a2755a9a52fa01ee32b722857bd4fdbc1d573c2d7dde55466b7d55",
+      "packaged_sha256": "4abac34b90a2755a9a52fa01ee32b722857bd4fdbc1d573c2d7dde55466b7d55",
+      "treatment": "verbatim reusable source"
+    },
+    {
+      "package_path": "skills/building-code-review/references/sources.md",
+      "source_path": "${HOME}/.codex/skills/building-code-review/references/sources.md",
+      "source_sha256": "79c38161b8b92f22af9c8795e0565c80a2cf087509b096dcc3de25cf393bbd96",
+      "packaged_sha256": "79c38161b8b92f22af9c8795e0565c80a2cf087509b096dcc3de25cf393bbd96",
+      "treatment": "verbatim reusable source"
+    },
+    {
+      "package_path": "skills/cabinetry-and-builtins/SKILL.md",
+      "source_path": "${HOME}/.codex/skills/cabinetry-and-builtins/SKILL.md",
+      "source_sha256": "99466fd4ce5730aeef6331cf2e5ee4a5bc65f1db39bfc06cf4a666ef7be1dc23",
+      "packaged_sha256": "99466fd4ce5730aeef6331cf2e5ee4a5bc65f1db39bfc06cf4a666ef7be1dc23",
+      "treatment": "verbatim reusable source"
+    },
+    {
+      "package_path": "skills/cabinetry-and-builtins/agents/openai.yaml",
+      "source_path": "${HOME}/.codex/skills/cabinetry-and-builtins/agents/openai.yaml",
+      "source_sha256": "5664ceacf6ecb5f5107f6bc7315ed3d4b6c1b7fdc4ce29f3cc55cc236f47477c",
+      "packaged_sha256": "5664ceacf6ecb5f5107f6bc7315ed3d4b6c1b7fdc4ce29f3cc55cc236f47477c",
+      "treatment": "verbatim reusable source"
+    },
+    {
+      "package_path": "skills/cabinetry-and-builtins/references/construction-and-finish.md",
+      "source_path": "${HOME}/.codex/skills/cabinetry-and-builtins/references/construction-and-finish.md",
+      "source_sha256": "eb512f04edc9a9230299c673c5f9345c2ebf20a8df57c56bba50c81132f3c71e",
+      "packaged_sha256": "eb512f04edc9a9230299c673c5f9345c2ebf20a8df57c56bba50c81132f3c71e",
+      "treatment": "verbatim reusable source"
+    },
+    {
+      "package_path": "skills/cabinetry-and-builtins/references/handoff-and-qa.md",
+      "source_path": "${HOME}/.codex/skills/cabinetry-and-builtins/references/handoff-and-qa.md",
+      "source_sha256": "d02ada7468010472f8bf2381065cf65831f1ab9be49127157b8caaa6b93662c5",
+      "packaged_sha256": "b117680e91fac4c573f8c6992429642a1f3b956a921206aa7ff1c3f0b670466e",
+      "treatment": "portable source: authoring roots changed to explicit optional configuration; named concurrent work removed"
+    },
+    {
+      "package_path": "skills/cabinetry-and-builtins/references/operation-and-stations.md",
+      "source_path": "${HOME}/.codex/skills/cabinetry-and-builtins/references/operation-and-stations.md",
+      "source_sha256": "b0b5bd834d7093ec74f7e1ff2a0c65452b4b39a3733822c25673184957603c78",
+      "packaged_sha256": "b0b5bd834d7093ec74f7e1ff2a0c65452b4b39a3733822c25673184957603c78",
+      "treatment": "verbatim reusable source"
+    },
+    {
+      "package_path": "skills/cabinetry-and-builtins/references/sources.md",
+      "source_path": "${HOME}/.codex/skills/cabinetry-and-builtins/references/sources.md",
+      "source_sha256": "2a3c74f4cdd8c9a683ae71592736d9b0529b0f9c8adda59008fe86bd61ce1688",
+      "packaged_sha256": "2a3c74f4cdd8c9a683ae71592736d9b0529b0f9c8adda59008fe86bd61ce1688",
+      "treatment": "verbatim reusable source"
+    },
+    {
+      "package_path": "skills/cabinetry-and-builtins/references/support-and-coordination.md",
+      "source_path": "${HOME}/.codex/skills/cabinetry-and-builtins/references/support-and-coordination.md",
+      "source_sha256": "25c424c41d214972d9747a4747cef1f32a2d2892ad8bea29bba19c7102748310",
+      "packaged_sha256": "25c424c41d214972d9747a4747cef1f32a2d2892ad8bea29bba19c7102748310",
+      "treatment": "verbatim reusable source"
+    },
+    {
+      "package_path": "skills/bid-package-review/SKILL.md",
+      "source_path": "${HOME}/.codex/skills/bid-package-review/SKILL.md",
+      "source_sha256": "97e219cdafe92612d13ebd3c4aeefc331354b5d3033140c6b4cf2149841413b6",
+      "packaged_sha256": "301920434c6d04b3303beb83201a9a3b8104809f0f22c3cd99412d203dd24029",
+      "treatment": "verbatim reusable source; portable/local-scope safety wording updated; historical references route to sanitized summary only"
+    },
+    {
+      "package_path": "skills/bid-package-review/agents/openai.yaml",
+      "source_path": "${HOME}/.codex/skills/bid-package-review/agents/openai.yaml",
+      "source_sha256": "f5ae544610f08797ae83a3d8d2c8277f8f11c799cbae53e33c2ba4466d3de08c",
+      "packaged_sha256": "f5ae544610f08797ae83a3d8d2c8277f8f11c799cbae53e33c2ba4466d3de08c",
+      "treatment": "verbatim reusable source"
+    },
+    {
+      "package_path": "skills/bid-package-review/references/recorded-workflow.md",
+      "source_path": "${HOME}/.codex/skills/bid-package-review/references/recorded-workflow.md",
+      "source_sha256": "9d21f48f2d16fc1d6671ea3eced70da7defd378f60fa187a14a7315f31d0b295",
+      "packaged_sha256": "3e333b1e8c6dcd8cfa7bb4537d6c8b2dc8fec0a354b57ba54e5dc10a163e0513",
+      "treatment": "sanitized summary; all customer/activity examples removed"
+    },
+    {
+      "package_path": "skills/buildertrend-proposal/SKILL.md",
+      "source_path": "${HOME}/.codex/plugins/cache/claude-cowork/buildertrend-proposal/1.0.0/skills/buildertrend-formatting/SKILL.md",
+      "source_sha256": "afc986e857c2b953ca8b2ee9dfb92d6e8e45f10e87bbac41ab5708137a94d554",
+      "packaged_sha256": "6c7587083ee6a9d4fd2864ebbc6f6df78fc31098fd1a2b98de5dccc07640559b",
+      "treatment": "adapted source: resolve markdown/plain-text contradictions; scope-only default; no unknown-to-zero owner-direct costs; generic exclusions require evidence; legacy CSI table labeled"
+    },
+    {
+      "package_path": "skills/buildertrend-proposal/references/coordination.md",
+      "source_path": "${HOME}/.codex/plugins/cache/claude-cowork/buildertrend-proposal/1.0.0/skills/buildertrend-formatting/references/coordination.md",
+      "source_sha256": "c23e34ee504caff340b767194fefe9f5f0516b038a126353c202da2bf6f672ea",
+      "packaged_sha256": "c23e34ee504caff340b767194fefe9f5f0516b038a126353c202da2bf6f672ea",
+      "treatment": "verbatim reusable source"
+    },
+    {
+      "package_path": "skills/buildertrend-proposal/references/csi-codes.md",
+      "source_path": "${HOME}/.codex/plugins/cache/claude-cowork/buildertrend-proposal/1.0.0/skills/buildertrend-formatting/references/csi-codes.md",
+      "source_sha256": "86584d3e3a1789585e8845385e3c051f4a342bd7bec76f9846351793a7635443",
+      "packaged_sha256": "148e5a6bd469ba85035d081ecd8e844c0300caa0e85a5666803d43be994af6e8",
+      "treatment": "verbatim reusable source; portable/local-scope safety wording updated; historical references route to sanitized summary only"
+    },
+    {
+      "package_path": "skills/buildertrend-proposal/references/exclusions.md",
+      "source_path": "${HOME}/.codex/plugins/cache/claude-cowork/buildertrend-proposal/1.0.0/skills/buildertrend-formatting/references/exclusions.md",
+      "source_sha256": "7200790c0c2a74692174fd79a5eb517c92649538631ab456ff398f7984457874",
+      "packaged_sha256": "a857ccf593d6e6f28733dc865032197fb7c071ee8a418293699cdd472dd1be41",
+      "treatment": "verbatim reusable source; portable/local-scope safety wording updated; historical references route to sanitized summary only"
+    },
+    {
+      "package_path": "skills/buildertrend-proposal/references/preliminaries.md",
+      "source_path": "${HOME}/.codex/plugins/cache/claude-cowork/buildertrend-proposal/1.0.0/skills/buildertrend-formatting/references/preliminaries.md",
+      "source_sha256": "34f60db9b5d89a556e5a0cae1a8e1434062cef106638e01f40be8080534c7bfc",
+      "packaged_sha256": "456f6cd429f3a94b97b879711e04674e527764904ee4c1808da11cdb35ff7744",
+      "treatment": "verbatim reusable source; portable/local-scope safety wording updated; historical references route to sanitized summary only"
+    },
+    {
+      "package_path": "templates/project/README.md",
+      "source_path": "${HOME}/projects/takeoff-skill-codex/templates/project/README.md",
+      "source_sha256": "b40c0f33b43f1b0e9596d01978ecd2555195338be4f53494f42ac596362d588f",
+      "packaged_sha256": "ce8a82046bdd225386edebf6b2c4f4bc4274409587ad5ac04dfe80d9094cc5e2",
+      "treatment": "verbatim reusable source; package template/instructions resolved independently of configured data root"
+    },
+    {
+      "package_path": "templates/project/checkpoints/checkpoint-template.md",
+      "source_path": "${HOME}/projects/takeoff-skill-codex/templates/project/checkpoints/checkpoint-template.md",
+      "source_sha256": "babf677de0bb7b1a4e3e1380d6528e75d3d55211f037ae9ab70e1ad4652767f5",
+      "packaged_sha256": "babf677de0bb7b1a4e3e1380d6528e75d3d55211f037ae9ab70e1ad4652767f5",
+      "treatment": "verbatim reusable source"
+    },
+    {
+      "package_path": "templates/project/measurements/project-manifest.json",
+      "source_path": "${HOME}/projects/takeoff-skill-codex/templates/project/measurements/project-manifest.json",
+      "source_sha256": "c6c8904ed8757e298b0cb3c81b7d22e3ac48b91a48900e54817a8bc49194b5a3",
+      "packaged_sha256": "c6c8904ed8757e298b0cb3c81b7d22e3ac48b91a48900e54817a8bc49194b5a3",
+      "treatment": "verbatim reusable source"
+    },
+    {
+      "package_path": "templates/project/registers/callouts.csv",
+      "source_path": "${HOME}/projects/takeoff-skill-codex/templates/project/registers/callouts.csv",
+      "source_sha256": "a72b944a40ed37be62bc2127552c1e0b3ad75d8578825b85b4e2c0483c087c8a",
+      "packaged_sha256": "a72b944a40ed37be62bc2127552c1e0b3ad75d8578825b85b4e2c0483c087c8a",
+      "treatment": "verbatim reusable source"
+    },
+    {
+      "package_path": "templates/project/registers/coverage.csv",
+      "source_path": "${HOME}/projects/takeoff-skill-codex/templates/project/registers/coverage.csv",
+      "source_sha256": "841b2642bea1c37494d962469700a1bcee26a63a31af70b09e5ee838ac91783e",
+      "packaged_sha256": "841b2642bea1c37494d962469700a1bcee26a63a31af70b09e5ee838ac91783e",
+      "treatment": "verbatim reusable source"
+    },
+    {
+      "package_path": "templates/project/registers/questions.csv",
+      "source_path": "${HOME}/projects/takeoff-skill-codex/templates/project/registers/questions.csv",
+      "source_sha256": "f9fd55ef9fb160ee82ce27046b92b1c3ab6bbde13c22de273bd48d207b369607",
+      "packaged_sha256": "f9fd55ef9fb160ee82ce27046b92b1c3ab6bbde13c22de273bd48d207b369607",
+      "treatment": "verbatim reusable source"
+    },
+    {
+      "package_path": "templates/project/registers/sources.csv",
+      "source_path": "${HOME}/projects/takeoff-skill-codex/templates/project/registers/sources.csv",
+      "source_sha256": "8ad0628d6f2eca3609f4336ef48b4a2738556f162718eb6348c8d84e6da2f53f",
+      "packaged_sha256": "8ad0628d6f2eca3609f4336ef48b4a2738556f162718eb6348c8d84e6da2f53f",
+      "treatment": "verbatim reusable source"
+    },
+    {
+      "package_path": "templates/project/registers/unfinished-measurements.csv",
+      "source_path": "${HOME}/projects/takeoff-skill-codex/templates/project/registers/unfinished-measurements.csv",
+      "source_sha256": "baa2f69f19b2be2c07d9a2cb0976e1e46c05552d4da3283bd3bffa806753acfa",
+      "packaged_sha256": "baa2f69f19b2be2c07d9a2cb0976e1e46c05552d4da3283bd3bffa806753acfa",
+      "treatment": "verbatim reusable source"
+    },
+    {
+      "package_path": "templates/project/registers/validation.csv",
+      "source_path": "${HOME}/projects/takeoff-skill-codex/templates/project/registers/validation.csv",
+      "source_sha256": "dc5d3ea76ec9768ad67361e53649771f4f64249d2b8b75ac20cf91b11749b18c",
+      "packaged_sha256": "dc5d3ea76ec9768ad67361e53649771f4f64249d2b8b75ac20cf91b11749b18c",
+      "treatment": "verbatim reusable source"
+    },
+    {
+      "package_path": "tools/run-cad.sh",
+      "source_path": "${HOME}/projects/takeoff-skill-codex/tools/run-cad.sh",
+      "source_sha256": "53e4c369cde9dbba0bcd392769d27b58890ec58d0f9a81e19a74e4731a2b92e4",
+      "packaged_sha256": "b692b3aa9bc54c41c6ca0779ba75cf666ffa4f242f6008c32b3df0e0c8d2e7bc",
+      "treatment": "portable wrapper: explicit optional TAKEOFF_PYTHON; no global configuration or fixed ODA/interpreter path"
+    }
+  ],
+  "inspected_evidence": [
+    {
+      "path": "${HOME}/projects/takeoff-skill-codex/AGENTS.md",
+      "sha256": "b932712e8af248c009c44e8c0bbb676707abf6bf1d06294ddbcad4a7f2189401",
+      "included": false,
+      "purpose": "read-only source evidence; project-specific originals excluded"
+    },
+    {
+      "path": "${HOME}/projects/takeoff-skill-codex/README.md",
+      "sha256": "9ab86fa826776927493453eb1a56efd9440571b4a2754959208569e0ee9d4fcd",
+      "included": false,
+      "purpose": "read-only source evidence; project-specific originals excluded"
+    },
+    {
+      "path": "${HOME}/projects/mlx-local/README.md",
+      "sha256": "3e1642cfde51f1ff3ecfc93a8646c2d42b5d30ba5bf45e8cedb15049d0deb628",
+      "included": false,
+      "purpose": "read-only source evidence; project-specific originals excluded"
+    },
+    {
+      "path": "${HOME}/projects/mlx-local/ARCHITECTURE.md",
+      "sha256": "d4e27b9a64eee59eb45f1e729f2e6009faa6ce601a2320637e1de7ea4bfe0559",
+      "included": false,
+      "purpose": "read-only source evidence; project-specific originals excluded"
+    },
+    {
+      "path": "${HOME}/projects/mlx-local/Package.swift",
+      "sha256": "2ee02b621db64d0afe49e3901332512ef52759d3ddaac0c287a45b9389e570da",
+      "included": false,
+      "purpose": "read-only source evidence; project-specific originals excluded"
+    },
+    {
+      "path": "${HOME}/projects/mlx-local/MODEL-GUIDE.md",
+      "sha256": "87e27f2a8908af7e29c775652cac87627ed4eaf30fe6793c7f0e096d40179057",
+      "included": false,
+      "purpose": "read-only source evidence; project-specific originals excluded"
+    },
+    {
+      "path": "${HOME}/projects/mlx-local/V3/README.md",
+      "sha256": "545fdfecd7163da2d69bfebbc9f94e86c86dd88df53545996b0ecf514cddd794",
+      "included": false,
+      "purpose": "read-only source evidence; project-specific originals excluded"
+    },
+    {
+      "path": "${HOME}/projects/mlx-local/V3/TRACER-REPORT.md",
+      "sha256": "5fdd971f835c979c2266d8696a7d86973367ad3512aed2064f311d4a32540c72",
+      "included": false,
+      "purpose": "read-only source evidence; project-specific originals excluded"
+    },
+    {
+      "path": "${HOME}/projects/mlx-local/V3/PRIVACY-PERMISSIONS.md",
+      "sha256": "dfccc6503e4279c2084eeb8ad5db099f9ef852965cb0112b6994e6b93d452b34",
+      "included": false,
+      "purpose": "read-only source evidence; project-specific originals excluded"
+    },
+    {
+      "path": "${HOME}/projects/mlx-local/Sources/ConstructionTracer/main.swift",
+      "sha256": "f1a2f31739487133ac7cc1bc4f8ccb393c87d024ddfecf0c4568b27a67afe9f7",
+      "included": false,
+      "purpose": "read-only source evidence; project-specific originals excluded"
+    },
+    {
+      "path": "${HOME}/projects/mlx-local/Sources/LocalLLMCore/DeterministicValidation.swift",
+      "sha256": "12e1cf87b81f013856d3fe5324877ee120131ffe7f155c4d8d1153c48ce4a3af",
+      "included": false,
+      "purpose": "read-only source evidence; project-specific originals excluded"
+    },
+    {
+      "path": "${HOME}/projects/mlx-local/Sources/LocalLLMCore/V3Orchestration.swift",
+      "sha256": "87880ca263299185085db0f5e757df034a186c88150be111babf8092a91996b8",
+      "included": false,
+      "purpose": "read-only source evidence; project-specific originals excluded"
+    },
+    {
+      "path": "${HOME}/projects/mlx-local/Sources/LocalLLMCore/ResourceManager.swift",
+      "sha256": "edf2b2b74d297f7efcd800abe6c0db80c343cf03fceba12f250b577f46b81242",
+      "included": false,
+      "purpose": "read-only source evidence; project-specific originals excluded"
+    },
+    {
+      "path": "${HOME}/projects/mlx-local/Sources/MLXMenu/AutoRouterController.swift",
+      "sha256": "917665e71d3591eb5b2c88354ac8977f5ff98bbd74fe158d556da662aa095a24",
+      "included": false,
+      "purpose": "read-only source evidence; project-specific originals excluded"
+    },
+    {
+      "path": "${HOME}/projects/mlx-local/Sources/LocalInferenceBackends/RouterRuntimes.swift",
+      "sha256": "0421567761060b5925651cb758fedb439c8d75f6fcf22000290a7c029e7d1f25",
+      "included": false,
+      "purpose": "read-only source evidence; project-specific originals excluded"
+    },
+    {
+      "path": "${HOME}/projects/blender-test/.prime/agent/skills/blender-architecture/SKILL.md",
+      "sha256": "adb1fe7d3ba34db332fa0c0f61b9183fc7628403be9b686d110e1d6047c3809c",
+      "included": false,
+      "purpose": "read-only source evidence; project-specific originals excluded"
+    }
+  ],
+  "mlx_head": "3f6bf3dd8c8c9f4245773166abbea2f7fc9d464d",
+  "mlx_dirty_at_inspection": [
+    "Sources/LocalLLMCore/ResourceManager.swift",
+    "Sources/MLXMenu/AutoRouterController.swift",
+    "Tests/LocalLLMCoreTests/ResourceBudgetTests.swift"
+  ],
+  "takeoff_workspace_git": "no .git directory; file hashes are authority",
+  "skill_search_roots": [
+    "${HOME}/.codex/skills",
+    "${HOME}/.claude/skills",
+    "${HOME}/.agents/skills",
+    "${HOME}/projects/takeoff-skill-codex/.agents/skills",
+    "${HOME}/projects/blender-test/.prime/agent/skills"
+  ],
+  "excluded": [
+    "all customer project folders and drawings",
+    "raw computer history and historical customer examples",
+    "model weights/cache contents",
+    "credentials, environment files, logs, job prompts/artifacts",
+    "Blender runtime/Prime implementation and project-bound model scripts",
+    "OpenTakeoff MCP",
+    "third-party document/rendering plugin bundles"
+  ]
+}

@@ -1,0 +1,9 @@
+INTERNAL NOTES - SYNTHETIC FIXTURE
+
+-Resolve Q01 material authority; no automatic newest-revision precedence.
+
+-Obtain Q02 tile height and complete U01 measurement.
+
+-Related access, protection and restoration extent/responsibility remain unestablished; do not infer quantities.
+
+-No vendor bid costs supplied. No price or markup calculated.

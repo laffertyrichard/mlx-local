@@ -1,0 +1,4 @@
+interface:
+  display_name: "Takeoff project setup"
+  short_description: "Create takeoff folders and stage source plans"
+  default_prompt: "Use $takeoff-project-setup to create a project in the explicitly configured preconstruction workspace and stage the supplied source plans."

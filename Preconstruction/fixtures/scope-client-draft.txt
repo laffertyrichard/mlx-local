@@ -1,0 +1,11 @@
+DRAFT - SYNTHETIC FIXTURE - HUMAN REVIEW PENDING
+
+Flooring
+
+-Room Alpha: 114 SF provisional installed floor area, calculated from 120 SF gross less 6 SF fixed-island deduction (QTY01; G01; D01; S01). Material remains unresolved: R1 wood conflicts with R2 tile (Q01; S01; S02).
+
+-Existing retained floor: 40 SF reference only, outside new-install total (QTY02; S01).
+
+-Tile wall quantity is unestablished pending height (Q02; QTY03). Depicted base measurement remains unfinished (U01; QTY04).
+
+-No pricing established. Geometry, material and scope release remain pending. This draft is not procurement or fabrication approval.

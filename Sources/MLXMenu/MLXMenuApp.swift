@@ -29,6 +29,12 @@ struct MLXMenuApp: App {
         }
         .defaultSize(width: 680, height: 640)
         .windowResizability(.contentMinSize)
+
+        Window("Preconstruction Takeoff", id: "takeoff") {
+            PreconstructionView()
+        }
+        .defaultSize(width: 1100, height: 760)
+        .windowResizability(.contentMinSize)
     }
 }
 
@@ -603,6 +609,16 @@ struct MenuPanel: View {
                 NSApplication.shared.activate(ignoringOtherApps: true)
             } label: {
                 Label("Open Chat", systemImage: "terminal")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.large)
+
+            Button {
+                openWindow(id: "takeoff")
+                NSApplication.shared.activate(ignoringOtherApps: true)
+            } label: {
+                Label("Open Takeoff", systemImage: "ruler")
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.bordered)

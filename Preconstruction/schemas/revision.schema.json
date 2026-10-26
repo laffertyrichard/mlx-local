@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:mlx-local:preconstruction:revision:0.1",
+  "title": "Proposed preconstruction revision envelope (not the area helper schema)",
+  "type": "object",
+  "required": ["schema_version", "synthetic", "revision_id", "sources", "calibrations", "quantities", "questions", "unfinished_measurements", "checks", "approvals"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {"const": "0.1"},
+    "synthetic": {"type": "boolean"},
+    "revision_id": {"type": "string", "minLength": 1},
+    "sources": {"type": "array", "items": {"$ref": "#/$defs/source"}},
+    "calibrations": {"type": "array", "items": {"$ref": "#/$defs/calibration"}},
+    "quantities": {"type": "array", "items": {"$ref": "#/$defs/quantity"}},
+    "questions": {"type": "array", "items": {"$ref": "#/$defs/issue"}},
+    "unfinished_measurements": {"type": "array", "items": {"$ref": "#/$defs/issue"}},
+    "checks": {"type": "array", "items": {"type": "object", "required": ["id", "dimension", "status", "evidence"], "properties": {"id": {"type": "string"}, "dimension": {"enum": ["arithmetic", "topology", "visual", "scope", "artifact", "code_basis"]}, "status": {"enum": ["passed", "failed", "skipped", "unavailable", "pending"]}, "evidence": {"type": ["string", "null"]}}}},
+    "approvals": {"type": "array", "items": {"type": "object", "required": ["gate", "status", "snapshot_sha256", "actor", "at"], "properties": {"gate": {"enum": ["reviewed_geometry", "design", "scope_release", "field", "fabrication", "procurement", "engineering", "code_basis_review"]}, "status": {"enum": ["pending", "approved", "rejected", "stale"]}, "snapshot_sha256": {"anyOf": [{"$ref": "#/$defs/hash"}, {"type": "null"}]}, "actor": {"type": ["string", "null"]}, "at": {"type": ["string", "null"]}}}}
+  },
+  "$defs": {
+    "hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "ids": {"type": "array", "items": {"type": "string", "minLength": 1}, "uniqueItems": true},
+    "source": {"type": "object", "required": ["id", "path", "sha256", "revision", "role", "page_index", "sheet"], "properties": {"id": {"type": "string"}, "path": {"type": "string"}, "sha256": {"$ref": "#/$defs/hash"}, "revision": {"type": "string"}, "role": {"enum": ["existing", "proposed", "record", "specification", "decision"]}, "page_index": {"type": "integer", "minimum": 0}, "sheet": {"type": "string"}}},
+    "calibration": {"type": "object", "required": ["id", "source_id", "frame_id", "plane_id", "coordinate_unit", "length_unit", "scale", "status", "checks"], "properties": {"id": {"type": "string"}, "source_id": {"type": "string"}, "frame_id": {"type": "string"}, "plane_id": {"type": "string"}, "coordinate_unit": {"enum": ["pdf_points", "pixels", "cad_units"]}, "length_unit": {"enum": ["ft", "in", "m", "mm"]}, "scale": {"type": ["number", "null"], "exclusiveMinimum": 0}, "status": {"enum": ["unestablished", "candidate", "reviewed", "conflict"]}, "checks": {"type": "array", "items": {"type": "object", "required": ["axis", "coordinate_length", "real_length", "datum"], "properties": {"axis": {"enum": ["x", "y"]}, "coordinate_length": {"type": "number", "exclusiveMinimum": 0}, "real_length": {"type": "number", "exclusiveMinimum": 0}, "datum": {"type": "string"}}}}}},
+    "quantity": {"type": "object", "required": ["id", "physical_item_id", "operation", "trade", "location", "material", "unit", "value", "scope_state", "basis", "source_ids", "geometry_refs", "question_ids", "related_work_ids", "relationship", "installed_total_eligible"], "properties": {"id": {"type": "string"}, "physical_item_id": {"type": "string"}, "operation": {"enum": ["reference", "remove", "relocate", "install", "restore"]}, "trade": {"type": "string"}, "location": {"type": "string"}, "material": {"type": ["string", "null"]}, "unit": {"enum": ["SF", "LF", "EA", "CY"]}, "value": {"type": ["number", "null"], "minimum": 0}, "scope_state": {"enum": ["existing_retained", "removal", "relocation", "proposed", "provisional", "excluded", "by_others", "option", "unresolved"]}, "basis": {"type": "string", "minLength": 1}, "source_ids": {"$ref": "#/$defs/ids"}, "geometry_refs": {"$ref": "#/$defs/ids"}, "question_ids": {"$ref": "#/$defs/ids"}, "related_work_ids": {"$ref": "#/$defs/ids"}, "relationship": {"enum": ["selected", "component", "alternative", "informational"]}, "installed_total_eligible": {"type": "boolean"}}},
+    "issue": {"type": "object", "required": ["id", "quantity_ids", "source_ids", "description", "status"], "properties": {"id": {"type": "string"}, "quantity_ids": {"$ref": "#/$defs/ids"}, "source_ids": {"$ref": "#/$defs/ids"}, "description": {"type": "string"}, "status": {"enum": ["open", "answered", "partially_answered", "superseded", "unfinished", "completed"]}}}
+  }
+}

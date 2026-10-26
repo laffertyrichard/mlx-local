@@ -79,10 +79,9 @@ final class AutoRouterController: ObservableObject {
                 profileRegistry = shipped
             }
         } else { profileRegistry = shipped }
-        let physical = Int64(ProcessInfo.processInfo.physicalMemory)
-        let pressureAware = Int64(Double(Self.availableMemoryEstimate() ?? physical) * 0.80)
         manager = ModelResourceManager(registry: discovered, runtimes: runtimes,
-                                       memoryBudgetBytes: min(Int64(Double(physical) * 0.72), pressureAware))
+                                       memoryBudgetBytes: Self.memoryObservation().commitmentCapBytes,
+                                       budgetProvider: { Self.memoryObservation() })
         try? FileManager.default.createDirectory(at: storageRoot, withIntermediateDirectories: true)
         try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: storageRoot.path)
         let profileEncoder = JSONEncoder(); profileEncoder.outputFormatting = [.prettyPrinted, .sortedKeys]; profileEncoder.dateEncodingStrategy = .iso8601
@@ -273,20 +272,19 @@ final class AutoRouterController: ObservableObject {
         try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
     }
 
-    private static func availableMemoryEstimate() -> Int64? {
+    /// Raw observation: the manager applies the reserve and estimate cap independently.
+    /// Unavailable vm_stat data must not masquerade as physical bytes available for allocation.
+    nonisolated static func memoryObservation() -> MemoryObservation {
+        MemoryObservation(availableBytes: availableMemoryEstimate(), physicalBytes: Int64(ProcessInfo.processInfo.physicalMemory))
+    }
+
+    nonisolated private static func availableMemoryEstimate() -> Int64? {
         let process = Process(); process.executableURL = URL(filePath: "/usr/bin/vm_stat")
         let pipe = Pipe(); process.standardOutput = pipe
         guard (try? process.run()) != nil else { return nil }; process.waitUntilExit()
-        guard let text = String(data: pipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) else { return nil }
-        let pageSize: Int64 = text.split(separator: "\n").first.flatMap { line in
-            line.split(whereSeparator: { !$0.isNumber }).compactMap { Int64($0) }.last
-        } ?? 16_384
-        let labels = ["Pages free", "Pages inactive", "Pages speculative", "Pages purgeable"]
-        var pages: Int64 = 0
-        for line in text.split(separator: "\n") where labels.contains(where: { line.hasPrefix($0) }) {
-            if let value = line.split(whereSeparator: { !$0.isNumber }).compactMap({ Int64($0) }).last { pages += value }
-        }
-        return pages > 0 ? pages * pageSize : nil
+        guard process.terminationStatus == 0,
+              let text = String(data: pipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) else { return nil }
+        return MemoryObservation.availableBytes(fromVMStat: text)
     }
 
     private static func describe(_ event: PipelineEvent) -> String {

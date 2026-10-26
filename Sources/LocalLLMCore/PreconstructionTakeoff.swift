@@ -7,6 +7,7 @@ public enum TakeoffError: Error, Equatable, LocalizedError {
     case duplicateID(String)
     case invalidSign(String)
     case invalidGeometry(String, String)
+    case unsupportedMixedScale(current: Double, proposed: String)
 
     public var errorDescription: String? {
         switch self {
@@ -14,20 +15,49 @@ public enum TakeoffError: Error, Equatable, LocalizedError {
         case .duplicateID(let id): "Duplicate geometry ID \(id)."
         case .invalidSign(let id): "Polygon \(id) sign must be 1 or -1."
         case .invalidGeometry(let id, let reason): "Geometry \(id) rejected: \(reason)."
+        case .unsupportedMixedScale(let current, let proposed):
+            "This page's areas and routes were traced at \(String(format: "%.3f", current)) pt/ft; the new witness gives \(proposed). "
+                + "A differently scaled detail needs its own plane, which is not supported (A11). Measure it on a separate page, "
+                + "or delete this page's areas and routes before recalibrating."
         }
     }
 }
 
 public extension Calibration {
+    /// Allowance for where a person clicks one witness endpoint, in PDF points (the unit of `coordinateLength`, in the
+    /// unrotated page frame). The takeoff view maps a click at 1/1.5 pt resolution and rounds to 0.01 pt, so this is
+    /// about 1.5 screen pixels of aim, not float noise.
+    static let endpointUncertaintyPoints = 1.0
+
     /// Independent X and Y witness checks; contradictory checks are a conflict, never an averaged scale.
-    static func evaluate(_ checks: [CalibrationCheck]) -> (scale: Double?, status: Status) {
-        let scales = checks.map(\.scale)
+    /// Two checks agree when their scales differ by no more than their combined click uncertainty: a +/-u error at each
+    /// end moves a witness of length L by up to 2u, so its scale is uncertain by scale * 2u / L. Float noise is a
+    /// separate 1e-9 relative term. Agreeing checks give the longest witness's scale (least uncertain), not an average.
+    static func evaluate(_ checks: [CalibrationCheck],
+                         endpointUncertainty: Double = endpointUncertaintyPoints) -> (scale: Double?, status: Status) {
         let axes = Set(checks.map(\.axis))
-        guard axes == [.x, .y], scales.allSatisfy({ $0.isFinite && $0 > 0 }) else { return (nil, .unestablished) }
-        let low = scales.min()!, high = scales.max()!
-        // ponytail: fixed 1e-9 relative tolerance absorbs float noise only; a drawing tolerance needs an explicit, recorded rule
-        guard (high - low) / high <= 1e-9 else { return (nil, .conflict) }
-        return (low, .candidate)
+        guard axes == [.x, .y], checks.allSatisfy({ $0.scale.isFinite && $0.scale > 0 && $0.coordinateLength > 0 }) else {
+            return (nil, .unestablished)
+        }
+        let tolerance = { (c: CalibrationCheck) in c.scale * 2 * endpointUncertainty / c.coordinateLength }
+        for a in checks {
+            for b in checks where abs(a.scale - b.scale) > tolerance(a) + tolerance(b) + 1e-9 * max(a.scale, b.scale) {
+                return (nil, .conflict)
+            }
+        }
+        return (checks.max { $0.coordinateLength < $1.coordinateLength }!.scale, .candidate)
+    }
+}
+
+public extension LengthUnit {
+    /// Feet per one unit. Areas convert with this factor squared.
+    var feet: Double {
+        switch self {
+        case .ft: 1
+        case .in: 1.0 / 12
+        case .m: 1 / 0.3048
+        case .mm: 1 / 304.8
+        }
     }
 }
 
@@ -53,14 +83,63 @@ public enum Takeoff {
         let gross = positives.reduce(0) { $0 + abs(signedArea($1.pts)) } / squared
         let deductions = plane.polys.filter { $0.sign == -1 }
         let deducted = deductions.reduce(0) { $0 + abs(signedArea($1.pts)) } / squared
-        var notes = deductions.compactMap { hole in
+        var failures = deductions.compactMap { hole in
             positives.contains { $0.zone == hole.zone && contains(outer: $0.pts, inner: hole.pts) }
                 ? nil : "\(hole.id) is not contained by a gross polygon in zone \(hole.zone)"
         }
-        let failed = !notes.isEmpty
-        // ponytail: overlap between gross polygons or between deductions needs a Boolean polygon engine; reported unavailable, not passed
-        notes.append("Overlap between polygons of the same sign is unchecked")
-        return AreaTakeoff(gross: gross, deductions: deducted, topology: failed ? .failed : .unavailable, topologyNotes: notes)
+        // `contains` can't tell a polygon on a concave boundary from one outside it, so only strict containment passes.
+        let strictlyInside = { (inner: AreaPlane.Polygon, outers: [AreaPlane.Polygon]) in
+            outers.contains { $0.zone == inner.zone && contains(outer: $0.pts, inner: inner.pts) && !touches($0.pts, inner.pts) }
+        }
+        var undecided = deductions.filter { hole in !failures.contains { $0.hasPrefix("\(hole.id) ") } && !strictlyInside(hole, positives) }
+            .map { "\($0.id) touches its gross boundary; containment is unchecked" }
+        // Ownership rule: a positive polygon inside a deduction of its zone is an add-back restoring that region, so
+        // its overlap with the gross polygon around it is intended. Any other same-sign overlap double counts, and
+        // overlapping deductions have no ownership rule, so both fail.
+        let addBacks = positives.filter { p in deductions.contains { $0.zone == p.zone && contains(outer: $0.pts, inner: p.pts) } }
+        undecided += addBacks.filter { !strictlyInside($0, deductions) }.map { "\($0.id) touches its deduction boundary; containment is unchecked" }
+        for group in [positives, deductions] {
+            for (i, a) in group.enumerated() {
+                for b in group.dropFirst(i + 1) {
+                    let pair = [a, b].sorted { $0.id < $1.id }
+                    let isAddBack = { (p: AreaPlane.Polygon) in addBacks.contains { $0.id == p.id } }
+                    // Only an add-back's overlap with the gross polygon around it is intended; two add-backs never overlap.
+                    if let addBack = pair.first(where: isAddBack), let other = pair.first(where: { $0.id != addBack.id }),
+                       !isAddBack(other), contains(outer: other.pts, inner: addBack.pts) { continue }
+                    switch relation(a.pts, b.pts) {
+                    case .overlap: failures.append("\(pair[0].id) overlaps \(pair[1].id)")
+                    case .touching: undecided.append("\(pair[0].id) touches \(pair[1].id); shared-boundary overlap is unchecked")
+                    case .disjoint: break
+                    }
+                }
+            }
+        }
+        let topology: CheckStatus = !failures.isEmpty ? .failed : !undecided.isEmpty ? .unavailable : .passed
+        return AreaTakeoff(gross: gross, deductions: deducted, topology: topology, topologyNotes: failures + undecided)
+    }
+
+    private enum Relation { case disjoint, touching, overlap }
+
+    /// Any vertex of one polygon on an edge of the other.
+    private static func touches(_ a: [[Double]], _ b: [[Double]]) -> Bool {
+        let edgesA = zip(a, a.dropFirst() + [a[0]]), edgesB = zip(b, b.dropFirst() + [b[0]])
+        return a.contains { p in edgesB.contains { onSegment($0.0, $0.1, p) } } || b.contains { p in edgesA.contains { onSegment($0.0, $0.1, p) } }
+    }
+
+    /// Two simple polygons with no proper crossing and no vertex inside or on the other are disjoint (containment
+    /// would put a vertex strictly inside). Any shared boundary point is reported, not guessed.
+    // ponytail: touching pairs (rooms sharing a wall) stay unavailable; a Boolean polygon engine is the upgrade path.
+    private static func relation(_ a: [[Double]], _ b: [[Double]]) -> Relation {
+        if Set(a) == Set(b) { return .overlap } // the same outline traced twice
+        let edgesA = Array(zip(a, a.dropFirst() + [a[0]])), edgesB = Array(zip(b, b.dropFirst() + [b[0]]))
+        if edgesA.contains(where: { e in edgesB.contains { properlyCross(e.0, e.1, $0.0, $0.1) } }) { return .overlap }
+        var touching = false
+        for (points, poly, edges) in [(a, b, edgesB), (b, a, edgesA)] {
+            for p in points {
+                if edges.contains(where: { onSegment($0.0, $0.1, p) }) { touching = true } else if windingContains(poly, p) { return .overlap }
+            }
+        }
+        return touching ? .touching : .disjoint
     }
 
     /// Open routes never get an automatic closing segment.
@@ -150,12 +229,14 @@ public extension AreaPlane {
             throw TakeoffError.invalidGeometry(polys.map(\.id).joined(separator: ","), takeoff.topologyNotes.joined(separator: "; "))
         }
         guard let unit = LengthUnit(rawValue: lengthUnit) else { throw TakeoffError.invalidGeometry(source.sheet, "unsupported length unit \(lengthUnit)") }
+        // The plane's area is in lengthUnit squared; SF needs the length factor squared (1 m2 = 10.7639 SF).
+        let squareFeet = takeoff.net * unit.feet * unit.feet
         // Helper scale has no witness checks attached, so it stays a candidate until X/Y checks are recorded.
         let calibration = Calibration(id: calibrationId, sourceId: sourceId, frameId: "\(sourceId)-P\(source.pageIndex)",
                                       planeId: planeId, coordinateUnit: .pdfPoints, lengthUnit: unit,
                                       scale: scale, status: .candidate, checks: [])
         let quantity = QuantityRecord(id: quantityId, physicalItemId: physicalItemId, operation: .install, trade: trade,
-                                      location: location, material: nil, unit: .SF, value: takeoff.net,
+                                      location: location, material: nil, unit: .SF, value: squareFeet,
                                       scopeState: .provisional, basis: "Area helper plane \(source.sheet): gross minus deductions",
                                       sourceIds: [sourceId], geometryRefs: polys.map(\.id), questionIds: [],
                                       relatedWorkIds: [], relationship: .selected, installedTotalEligible: false)

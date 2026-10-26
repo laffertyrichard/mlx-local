@@ -43,6 +43,18 @@ public struct TakeoffMeasurements: Codable, Equatable, Sendable {
                            status: status == .candidate && calibrationReviewed ? .reviewed : status, checks: calibrationChecks)
     }
 
+    /// One calibration per page: independent detail planes (A11) are not supported. Once areas or routes are traced under
+    /// an established scale, a new witness must agree with every existing check, so a differently scaled detail is
+    /// refused instead of silently rescaling what was already traced. Counts don't depend on scale.
+    public func calibrationChecks(adding check: CalibrationCheck) throws -> [CalibrationCheck] {
+        let replaced = calibrationChecks.filter { $0.axis != check.axis } + [check]
+        guard !polys.isEmpty || !routes.isEmpty, let current = calibration.scale else { return replaced }
+        guard Calibration.evaluate(calibrationChecks + [check]).status == .candidate else {
+            throw TakeoffError.unsupportedMixedScale(current: current, proposed: String(format: "%.3f pt/ft", check.scale))
+        }
+        return replaced
+    }
+
     /// Helper-schema plane, written beside the revision so geometry.py can recheck it. Nil without a usable scale.
     public var plane: AreaPlane? {
         guard let scale = calibration.scale, !polys.isEmpty else { return nil }
@@ -80,6 +92,26 @@ public struct TakeoffMeasurements: Codable, Equatable, Sendable {
             rows.append(row("QTY-COUNT-\(source.id)", item: "COUNT-\(source.id)", trade: countTrade, unit: .EA,
                             value: Double(Takeoff.physicalCount(counts.map(\.physicalItemId))),
                             basis: "Distinct physical items across \(counts.count) marks", refs: counts.map(\.id)))
+        }
+        return rows
+    }
+
+    /// Quantities for every traced page of one revision. Area and route rows stay per page; count rows are combined
+    /// per trade across pages, so one fixture seen on two sheets is 1 EA. Identity is the person-entered physical item
+    /// ID only, never position or appearance, so identical-looking fixtures with different IDs stay separate.
+    public static func quantities(across pages: [TakeoffMeasurements]) -> [QuantityRecord] {
+        var rows = pages.flatMap { $0.quantities().filter { $0.unit != .EA } }
+        let counted = pages.filter { !$0.counts.isEmpty }
+        for trade in Set(counted.map(\.countTrade)).sorted() {
+            let group = counted.filter { $0.countTrade == trade }
+            let marks = group.flatMap { page in page.counts.map { (page: page.source.id, count: $0) } }
+            var row = group[0].row("QTY-COUNT-\(trade)", item: "COUNT-\(trade)", trade: trade, unit: .EA,
+                                   value: Double(Takeoff.physicalCount(marks.map(\.count.physicalItemId))),
+                                   basis: "Distinct physical items across \(marks.count) marks on \(group.count) page(s)",
+                                   refs: marks.map { "\($0.page)/\($0.count.id)" })
+            row.location = group.map(\.location).reduce(into: [String]()) { if !$0.contains($1) { $0.append($1) } }.joined(separator: ", ")
+            row.sourceIds = group.map(\.source.id)
+            rows.append(row)
         }
         return rows
     }

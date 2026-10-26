@@ -447,4 +447,45 @@ struct PreconstructionRuntimeTests {
         #expect(await runtime.cancelledEntries == 1, "Manager may enter execute, but cancellation-aware runtime refuses work")
         #expect(try w.store.interpretation(units[0].id, in: w.project) == nil)
     }
+
+    @Test("S23: adapter admits a model fitting only after idle eviction and refuses one exceeding that hint")
+    func idleEvictionAdmission() async throws {
+        let runtime = RtRuntime()
+        var larger = rtModel("too-large"); larger.approximateMemoryBytes = 101
+        let manager = rtManager(runtime, models: [rtModel("first"), rtModel("second"), larger], budget: 100)
+        _ = try await PreconRuntimeInterpreter(manager: manager, textModelID: "first").interpret(rtRequest())
+        let snapshot = await manager.snapshot(totalMemoryBytes: 100)
+        #expect(snapshot.availableMemoryBytes == 0 && snapshot.reclaimableMemoryBytes == 100)
+        var completed = false
+        do { _ = try await PreconRuntimeInterpreter(manager: manager, textModelID: "second").interpret(rtRequest()); completed = true }
+        catch { }
+        #expect(completed, "Manager must get the opportunity to evict idle first")
+        #expect(await manager.snapshot(totalMemoryBytes: 100).loadedModelIDs == ["second"])
+        let before = await runtime.calls.count
+        do { _ = try await PreconRuntimeInterpreter(manager: manager, textModelID: "too-large").interpret(rtRequest()); Issue.record("must refuse") }
+        catch PreconRuntimeError.resourceRefused { }
+        #expect(await runtime.calls.count == before)
+    }
+
+    @Test("S24: refused evaluation still yields a report with reasons and skipped-page coverage")
+    func deferredEvaluationReport() async throws {
+        let w = try RtWorkspace(); defer { w.cleanUp() }
+        let runtime = RtRuntime()
+        let adapter = PreconRuntimeInterpreter(manager: rtManager(runtime, budget: 1), textModelID: "text")
+        let cases = ["one", "two"].map { PreconEvaluationCase(id: $0, raster: false, lines: ["12 ft"], expected: ["12 ft"], absent: []) }
+        let dataset = PreconEvaluationSet(label: "MOCK", cases: cases)
+        let pages = try await dataset.evaluate(adapter: adapter, in: w.root)
+        #expect(pages.count == 1 && pages[0].units[0].status == .deferred)
+        #expect(!pages[0].units[0].questions.isEmpty)
+        let report = try dataset.report(pages, label: "MOCK")
+        let file = w.root.appending(path: "report.json")
+        try report.write(to: file, options: .withoutOverwriting)
+        let json = try #require(JSONSerialization.jsonObject(with: Data(contentsOf: file)) as? [String: Any])
+        let units = try #require(json["units"] as? [[String: Any]])
+        #expect(units[0]["status"] as? String == "deferred")
+        let score = try dataset.score(pages, label: "MOCK")
+        #expect(score.coverage.pagesInterpreted == 0 && score.coverage.pagesSkipped == 2)
+        #expect(score.coverage.chunksSkipped == nil && score.sourceSupport.display == "unavailable")
+        #expect(await runtime.calls.isEmpty)
+    }
 }

@@ -108,8 +108,9 @@ public struct PreconRuntimeInterpreter: Sendable {
         if model.backend == .mlxLM, effectivePrompt.count > max(8_000, model.contextWindow * 3) {
             throw PreconRuntimeError.unsupported("Effective prompt exceeds the single-call backend limit; shorten the profile or input")
         }
+        // Idle reclaim is a routing hint only; execute still evicts and re-observes actual headroom.
         let snapshot = await manager.snapshot(totalMemoryBytes: 0)
-        if !snapshot.loadedModelIDs.contains(id), model.approximateMemoryBytes > snapshot.availableMemoryBytes {
+        if !snapshot.loadedModelIDs.contains(id), model.approximateMemoryBytes > snapshot.availableMemoryBytes + snapshot.reclaimableMemoryBytes {
             throw PreconRuntimeError.resourceRefused("Model \(id) needs about \(model.approximateMemoryBytes) bytes; headroom is \(snapshot.availableMemoryBytes)")
         }
         var attachments: [RequestAttachment] = []

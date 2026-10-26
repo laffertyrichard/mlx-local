@@ -87,6 +87,33 @@ public struct PreconEvaluationSet: Codable, Sendable {
         return url
     }
 
+    public func evaluate(adapter: PreconRuntimeInterpreter, in workspace: URL) async throws -> [PreconEvaluationPage] {
+        let store = try PreconProjectStore(root: workspace), project = workspace.appending(path: "project")
+        try FileManager.default.createDirectory(at: project, withIntermediateDirectories: true)
+        var pages: [PreconEvaluationPage] = []
+        for item in cases {
+            try Task.checkCancellation()
+            let pdf = try generate(item, in: workspace)
+            let sources = try store.importSource(pdf, into: project, role: .proposed, revision: "EVAL")
+            let pipeline = try await adapter.pipeline(store: store, project: project)
+            let units = try await pipeline.run(sources)
+            let document = PDFDocument(url: pdf)
+            let native = document?.page(at: 0)?.string ?? ""
+            withExtendedLifetime(document) {}
+            pages.append(.init(caseID: item.id, units: units, nativeText: native))
+            if units.contains(where: { $0.status == .deferred }) { break }
+        }
+        return pages
+    }
+
+    public func report(_ pages: [PreconEvaluationPage], label: String) throws -> Data {
+        let score = try score(pages, label: label)
+        return try JSONSerialization.data(withJSONObject: [
+            "metrics": JSONSerialization.jsonObject(with: Data(score.json().utf8)),
+            "units": JSONSerialization.jsonObject(with: PreconJSON.encoder.encode(pages.flatMap(\.units)))
+        ], options: [.prettyPrinted, .sortedKeys])
+    }
+
     public func score(_ pages: [PreconEvaluationPage], label: String) throws -> PreconEvaluationScore {
         guard Set(cases.map(\.id)).count == cases.count, Set(pages.map(\.caseID)).count == pages.count,
               Set(pages.map(\.caseID)).isSubset(of: Set(cases.map(\.id))) else { throw CocoaError(.validationMissingMandatoryProperty) }

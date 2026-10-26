@@ -28,7 +28,7 @@ public struct InterpretationRequest: Sendable {
     public var isRetry: Bool
 }
 
-/// The model seam. Returns raw JSON text; a ModelRuntime adapter goes here once real evaluation is authorized.
+/// The model seam returns raw JSON; runtime-backed calls still yield candidates only.
 public typealias PreconInterpreter = @Sendable (InterpretationRequest) async throws -> String
 
 public struct InterpretationCandidate: Codable, Equatable, Sendable {
@@ -56,6 +56,27 @@ public struct InterpretationUnit: Codable, Equatable, Sendable {
     public var candidates: [InterpretationCandidate] = []
     /// Explicit gaps: unread pages, uninterpreted chunks, failures, deferral reasons.
     public var coverage: [String] = []
+    public var questions: [String] = []
+    public var plannedChunks: Int?
+    public var interpretedChunks: Int?
+
+    public init(id: String, sourceId: String, pageIndex: Int, stage: InterpretationStage, status: Status,
+                candidates: [InterpretationCandidate] = [], coverage: [String] = [], questions: [String] = []) {
+        self.id = id; self.sourceId = sourceId; self.pageIndex = pageIndex; self.stage = stage; self.status = status
+        self.candidates = candidates; self.coverage = coverage; self.questions = questions
+    }
+    private enum CodingKeys: String, CodingKey { case id, sourceId, pageIndex, stage, status, candidates, coverage, questions, plannedChunks, interpretedChunks }
+    public init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        id = try values.decode(String.self, forKey: .id); sourceId = try values.decode(String.self, forKey: .sourceId)
+        pageIndex = try values.decode(Int.self, forKey: .pageIndex); stage = try values.decode(InterpretationStage.self, forKey: .stage)
+        status = try values.decode(Status.self, forKey: .status)
+        candidates = try values.decode([InterpretationCandidate].self, forKey: .candidates)
+        coverage = try values.decode([String].self, forKey: .coverage)
+        questions = try values.decodeIfPresent([String].self, forKey: .questions) ?? []
+        plannedChunks = try values.decodeIfPresent(Int.self, forKey: .plannedChunks)
+        interpretedChunks = try values.decodeIfPresent(Int.self, forKey: .interpretedChunks)
+    }
 
     var isReusable: Bool { [.complete, .held, .partial].contains(status) }
 }
@@ -70,7 +91,7 @@ public struct VisionFocus: Sendable {
 
 public struct InterpretationPipeline: Sendable {
     /// Bump when code-side rules change (quote support, OCR checks, chunking). Prompts are digested separately.
-    public static let version = "precon-interpret-4"
+    public static let version = "precon-interpret-6"
     public var store: PreconProjectStore
     public var project: URL
     public var interpreter: PreconInterpreter
@@ -78,7 +99,7 @@ public struct InterpretationPipeline: Sendable {
     public var profileDigest = "unprofiled"
     public var minimumConfidence = 0.6
     /// Checked before every model call. A non-nil reason (memory, pricing workload) defers the run.
-    public var gate: @Sendable () -> String? = { nil }
+    public var gate: @Sendable () async -> String? = { nil }
     /// Part of every unit ID, so a prompt edit can never reuse units produced under the old prompt.
     public var ocrInstruction = Self.defaultOCRInstruction
     public var candidateInstruction = Self.defaultCandidateInstruction
@@ -99,12 +120,12 @@ public struct InterpretationPipeline: Sendable {
         var units: [InterpretationUnit] = []
         var verified = Set<String>()
         for (source, focus) in jobs {
-            try Task.checkCancellation()
             // Current bytes are checked before a saved unit is trusted, not only before a fresh run.
             if verified.insert(source.path).inserted { _ = try sourceURL(source) }
             let id = unitID(source, focus: focus)
             if let saved = try store.interpretation(id, in: project) { units.append(saved); continue }
-            let unit = try await interpret(source, focus: focus, id: id)
+            var unit = try await interpret(source, focus: focus, id: id)
+            unit.questions = unit.coverage + unit.candidates.compactMap(\.heldReason)
             units.append(unit)
             if unit.status == .deferred { break }
             if unit.isReusable { try store.saveInterpretation(unit, in: project) }
@@ -217,6 +238,7 @@ extension InterpretationPipeline {
     /// Bounded chunks in order; whatever exceeds the budget is recorded as uninterpreted, never dropped silently.
     private func extract(_ text: String, independent: Bool, into unit: inout InterpretationUnit) async {
         let chunks = Self.chunks(text, max: budget.maxInputChars)
+        unit.plannedChunks = chunks.count; unit.interpretedChunks = 0
         for (index, chunk) in chunks.prefix(budget.maxChunks).enumerated() {
             let raw: RawCandidates?
             do {
@@ -228,6 +250,7 @@ extension InterpretationPipeline {
                 return
             }
             accept(raw.candidates, verifiedAgainst: text, independent: independent, into: &unit)
+            unit.interpretedChunks = index + 1
         }
         if chunks.count > budget.maxChunks {
             unit.status = .partial
@@ -236,6 +259,7 @@ extension InterpretationPipeline {
     }
 
     private func readVision(_ page: PDFPage, crop: [Double], pageText: String, into unit: inout InterpretationUnit) async {
+        unit.plannedChunks = 1; unit.interpretedChunks = 0
         let label = "page \(unit.pageIndex + 1) crop \(crop.map { String(Int($0)) }.joined(separator: ","))"
         do {
             let raw = try await withImage(page, crop: crop) { image in
@@ -243,6 +267,7 @@ extension InterpretationPipeline {
             }
             guard let raw else { unit.status = .failed; unit.coverage.append("\(label): malformed output after retry"); return }
             accept(raw.candidates, verifiedAgainst: pageText, independent: !pageText.isEmpty, into: &unit)
+            unit.interpretedChunks = 1
         } catch { mark(&unit, error, label: label) }
     }
 
@@ -272,10 +297,12 @@ extension InterpretationPipeline {
     private func ask<T: Decodable>(_ type: T.Type, unit: InterpretationUnit, stage: InterpretationStage, instruction: String,
                                    text: String?, image: URL?) async throws -> T? {
         for attempt in 0..<2 {
-            if let reason = gate() { throw Deferral(reason: reason) }
+            try Task.checkCancellation()
+            if let reason = await gate() { throw Deferral(reason: reason) }
             let request = InterpretationRequest(unitId: unit.id, stage: stage, instruction: instruction, text: text, image: image,
                                                 maxOutputTokens: budget.reservedOutputTokens, isRetry: attempt > 0)
             let output = try await interpreter(request)
+            try Task.checkCancellation()
             if let decoded = try? PreconJSON.decoder.decode(T.self, from: Data(output.utf8)) { return decoded }
         }
         return nil
@@ -286,6 +313,10 @@ extension InterpretationPipeline {
     private func mark(_ unit: inout InterpretationUnit, _ error: Error, label: String) {
         if let deferral = error as? Deferral {
             unit.status = .deferred; unit.coverage.append("\(label) deferred: \(deferral.reason)")
+        } else if error is CancellationError {
+            unit.status = .deferred; unit.coverage.append("\(label) cancelled")
+        } else if let runtime = error as? PreconRuntimeError {
+            unit.status = .deferred; unit.coverage.append("\(label) deferred: \(runtime.localizedDescription)")
         } else {
             unit.status = .incomplete; unit.coverage.append("\(label) failed: \(error.localizedDescription)")
         }

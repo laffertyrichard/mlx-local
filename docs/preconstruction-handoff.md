@@ -132,6 +132,88 @@ Next real-model gate (not started, needs explicit authorization and a quiet wind
 - Original closeout: 85 tests; three production-bundle tests and two C1-01 regressions bring this branch to 90. R-b core helper tests cover removed/renamed file sets and unchanged partial retries; controller wiring and the native walkthrough remain untested.
 - Memory (PR #2) qualifications are on `fix/memory-accounting`: reservations use registry estimates rather than measured peaks; active-model KV growth is not attributed per model; no real-model memory evaluation has been done.
 
+## Session 6 (2026-10-26): merges and runtime-backed Read Page
+
+Roles: Claude coordinated through Orca Run `run_397dcf33146d`, Prime built, Codex reviewed. Prime is not a registered Orca agent (`worker-start` times out at `agent_readiness`), so Prime's Dispatches were sent with `dispatch --inject` and Orca records them as unsupervised. Codex ran as supervised `worker-start --agent codex` sessions. Prime started two Codex helpers on its own (`ctx_7869d339ad9b`, read-only log search; `ctx_f7b122d1a1ba`, drafting C3). The second was stopped, and its one untracked test file was deleted. Prime then wrote C3 itself. Codex found no helper-authored code in git, but git can't prove line authorship.
+
+All evidence is in `/Users/mccully/projects/mlx-local-evidence/2026-10-26/` (outside the repo). Each `*.log` ends with `exit=<code>`, and `SUMMARY.md`, `c1-01-fix.md`, `slice-core.md`, `slice-ui-eval.md` and `c4fix.md` list every command.
+
+**Identities**
+
+| What | SHA |
+|---|---|
+| Base of both PRs | `67565a7` (`feat/package-installer`) |
+| PR #2 `fix/memory-accounting` head / merge into `feat/package-installer` | `5f53630` / `f5e173d` |
+| PR #3 `fix/interpretation-integrity` head / merge | `26c01c1` / `588ddb8` (tree identical to the tested integration merge `6d7805f`) |
+| Added on PR #3 this session | `3e6159a` (save-bundle tests R-a..R-d), `26c01c1` (C1-01 fix) |
+| This slice, `feat/read-page-candidates` on `588ddb8` | `71a427f`, `dba5b31`, `b763c06`, `04a691f`, `cbd1954`, `78ab62f`, `717758b`, `a31bd30` |
+| `main` | untouched at `10372cf`. Draft PR #4 (`feat/package-installer` -> `main`, 28 commits, 132 files) is open and not merged |
+| This slice published | draft PR #5 (`feat/read-page-candidates` -> `feat/package-installer`), not merged |
+
+The core evidence (`slice-core.md`, `slice-core-*.log`) was produced at `d6ca0de`/`974351d` on top of the integration tree `6d7805f`. Those commits were then rebased onto `588ddb8` as `71a427f`/`dba5b31`, with identical trees. `/Users/mccully/projects/mlx-local-review` is a detached snapshot worktree that Codex reviewed from; it was left at `a31bd30`.
+
+Beyond routing, the coordinator (Claude) did these directly:
+- merged PRs #2 and #3, and opened PRs #4 and #5;
+- rebased this branch;
+- ran the one authorized `PreconEvaluation` command;
+- wrote this Session 6 section.
+
+The original Codex pane was shut down by a mistaken interrupt keypress while its hooks prompt was being answered, so all reviews ran as fresh supervised Codex sessions.
+
+No GitHub workflows, rulesets, branch protection or webhooks exist. `actions/runs` was 0 after every push and merge.
+
+**Verification of the merged work.** The baseline totals were reproduced at the exact SHAs: 53 (`5f53630`), 85 (`9e32531`) and 102 (integration `50de634`). After `3e6159a` and `26c01c1` the totals are 90 (`26c01c1`) and 107 (`6d7805f`). The R-a..R-d save-path tests run against the same `PreconProjectStore.saveRevision` that `TakeoffController.save` calls, with fault injection:
+- R-a: the user's exact three-save R1 sequence.
+- R-b: a changed retry gets a fresh ID.
+- R-c: abandoned R2 files are SHA-256-identical before and after, and unreferenced.
+- R-d: reopen validates every binding and refuses isolated tampering.
+
+Your manual walkthrough (calibrate, trace, save/retry, quit/reopen, incompatible-scale refusal) is recorded as user-tested workflow evidence, not as acceptance. `verify_package.py` fails in `mlx-local-interp` only because of an untracked, git-ignored Finder `.DS_Store`. It passes on a `git archive HEAD` export.
+
+**Codex findings and resolution** (`codex-review-1.md` .. `codex-review-5.md`)
+
+| ID | Severity | Resolution |
+|---|---|---|
+| C1-01 | Material | A changed retry could reuse a partially used revision ID when no filenames collided. Fixed in `26c01c1` with `canReuseRevisionID`, verified in review 2. The red run was a compile failure (C2-01) |
+| C1-02 | Note | A load/eviction window predates this work (a model is resident with 0 active requests while its callback runs). Open |
+| C1-03 | Note | Controller-only paths are untested (native target). Open |
+| C3-01 | Material | Over-threshold profiled prompts hit the backend's chunking branch, which drops the profile and output cap. Fixed in `b763c06`: such prompts are refused before `execute` |
+| C3-02 | Minor | The advisory gate checked models the current stage doesn't use. Removed in `b763c06` |
+| C3-03 | Note | Cache identity depended on the caller. Fixed: the `adapter.pipeline(...)` factory binds `profileDigest` |
+| C4-01 | Material | Cancel didn't release a reader waiting on a cold load. Fixed in `78ab62f` with a cancellation race; the shared load is not stopped |
+| C4-02 | Minor | Crop work ran on the main actor. Fixed in `717758b` |
+| C4-03 | Note | Eval negative controls are exact-match sentinels. Documented |
+| Architect | Material | The runner ignored live memory. Fixed in `a31bd30` with a live vm_stat budget. The pre-check now proceeds when available + idle reclaimable >= estimate |
+| C5-01 | Minor | Qwen3-VL-8B is registered vision-only, so the eval's OCR stage can't use it. The user switched the real run to dots.ocr. Open: the runner preflight should require the capability that is actually used |
+
+**Slice design** (`slice-spec.md`):
+- `PreconRuntimeInterpreter` sends one local-only, structured stage to the model the user picked, through the shared `ModelResourceManager`.
+- `ResourceManager.swift` and `LocalInferenceBackends` are unchanged. Wrapped `execute` errors become `runtimeFailed`, and the unit fails closed.
+- Read Page has no preselected model and does not run on launch. Accept/Reject writes a write-once, digest-bound review record and never a quantity. Stale reviews are shown, never applied.
+- `PreconEvaluation` refuses to run without `--authorized` and installed model IDs.
+- The eval set has 4 native-text synthetic PDFs plus 1 raster page. Its expected results were written from the generator inputs; Codex re-derived two of them independently. It scores four separate metrics.
+- Final suite at `a31bd30`: 133 tests (`c4fix-final.log`, exit 0). Codex's independent run also passed (`codex-review-5-tests.log`).
+
+**Real model vs mock.** All S01-S12+ tests and S11 use fakes (MOCK). There was one real run, authorized by the user with the quiet window confirmed: `PreconEvaluation --authorized --text-model mlx-community/Qwen3-30B-A3B-Instruct-2507-4bit --image-model mlx-community/dots.ocr-8bit` at `a31bd30`, 2026-10-26 19:03:44Z to 19:04:04Z, exit 0. The report is `real-eval-report.json` and the run log is `real-eval-run.log`. After the run no worker processes remained and memory was released.
+
+| Metric | Result |
+|---|---|
+| Extraction | 10/21 expected items found |
+| Source support | 14/14 candidate quotes verbatim on the page |
+| Coverage | 4/5 pages interpreted. The raster page failed: dots.ocr returned malformed output twice (initial call and one retry), so it fails closed |
+| Quantity agreement | 2/2 (deterministic geometry only; candidates are never counted) |
+| Absent-item trap / no-quantity page | No absent item was found; 0 candidates |
+
+That is one run on five synthetic pages, which shows the integration path works. It does not establish accuracy, and the OCR prompt/model pairing is not working yet. Neither the native UI nor Read Page has been run against a real model. No vision-stage (crop) inference has been run.
+
+**Untested or open**
+- The native app: Read Page, candidate review, and the save/retry walkthrough below after the C1-01 fix.
+- C1-02.
+- After a cancelled shared load completes, `runtime.execute` may still be entered. Only URLSession cancellation stops it. A one-line `Task.checkCancellation()` after `ensureLoaded` in `executeStage` would close this. It touches the merged manager, so it needs approval and review.
+- Measured memory peaks.
+- Same-sign touching polygons.
+- A11.
+
 ## Next steps (in order)
 
 0. **Open gate: running-app save/retry walkthrough (about 5 minutes, needs a person).** The closeout session couldn't drive the UI (no Accessibility permission). Use a debug build of this branch and a throwaway data root:
@@ -145,11 +227,11 @@ Next real-model gate (not started, needs explicit authorization and a quiet wind
    8. A11 refusal check: on the same page, choose Cal X, enter 6 ft and click the same two points. Expect the "traced at 18.000 pt/ft ... not supported (A11)" message, with the area unchanged.
 1. Done: `build-package.sh` built `dist/MLX-Menu-3.1.1.5.pkg` (unsigned) and `verify-package.sh` passed with the template allowlist. The app extracted from the pkg, launched from cwd `/`, created a project identical to its bundled template. Not installed; installing needs admin rights.
 2. Touching same-sign polygons (rooms sharing a wall) need a Boolean polygon engine to decide; until then that pair stays `unavailable`.
-3. Phase 3 follow-ups (core done, see Session 3):
-   - Real interpreter adapter: a `PreconInterpreter` closure over `ModelRuntime` (text model for candidates, single-image OCR/vision model). Apple Vision `VNRecognizeTextRequest` is a candidate for the OCR stage. Not written.
-   - Wire `gate` to `ResourceManager`'s public budget API (the live-memory work is on `fix/memory-accounting`, PR #2).
-   - UI: "Read Page" in the takeoff window listing candidates with quote/held reason. Not written.
-   - Small held-out local evaluation: needs explicit user authorization and a quiet window, because the Mac runs a trade-pricing workload.
+3. Done in Session 6: the runtime adapter, the ResourceManager admission/cancellation wiring, Read Page with candidate review, and the held-out eval set and runner. Remaining before merging `feat/read-page-candidates` (draft PR, not merged):
+   - Native walkthrough of Read Page. Select models, read a native-text page, Cancel during a cold load, Accept/Reject, then edit the source and confirm the review shows as stale. Needs a person and a quiet window.
+   - C5-01: require the capability the stage actually uses in runner preflight, and make the OCR prompt work with dots.ocr (or use Apple Vision OCR). Rerun the real eval after that.
+   - Optional, needs approval: the one-line cancellation check after `ensureLoaded` in `ResourceManager.executeStage`.
+4. Next bounded milestone toward document-set takeoffs: **project-level read across a document set.** Run Read Page over every page of every imported source. Group the reviewed candidates by sheet, room and spec section. Surface conflicts between sources (the same dimension or material stated differently) and unresolved questions as first-class records. Candidates stay candidates: quantities still come only from deterministic measurement, and conflicts are never auto-closed. Exit: a synthetic 2-3 sheet set with a planted plan/schedule conflict and a missing spec item. The conflict and the question must be reported with sources, with zero invented quantities.
 
 ## Rules and gotchas
 

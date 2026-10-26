@@ -148,6 +148,17 @@ All evidence is in `/Users/mccully/projects/mlx-local-evidence/2026-10-26/` (out
 | Added on PR #3 this session | `3e6159a` (save-bundle tests R-a..R-d), `26c01c1` (C1-01 fix) |
 | This slice, `feat/read-page-candidates` on `588ddb8` | `71a427f`, `dba5b31`, `b763c06`, `04a691f`, `cbd1954`, `78ab62f`, `717758b`, `a31bd30` |
 | `main` | untouched at `10372cf`. Draft PR #4 (`feat/package-installer` -> `main`, 28 commits, 132 files) is open and not merged |
+| This slice published | draft PR #5 (`feat/read-page-candidates` -> `feat/package-installer`), not merged |
+
+The core evidence (`slice-core.md`, `slice-core-*.log`) was produced at `d6ca0de`/`974351d` on top of the integration tree `6d7805f`. Those commits were then rebased onto `588ddb8` as `71a427f`/`dba5b31`, with identical trees. `/Users/mccully/projects/mlx-local-review` is a detached snapshot worktree that Codex reviewed from; it was left at `a31bd30`.
+
+Beyond routing, the coordinator (Claude) did these directly:
+- merged PRs #2 and #3, and opened PRs #4 and #5;
+- rebased this branch;
+- ran the one authorized `PreconEvaluation` command;
+- wrote this Session 6 section.
+
+The original Codex pane was shut down by a mistaken interrupt keypress while its hooks prompt was being answered, so all reviews ran as fresh supervised Codex sessions.
 
 No GitHub workflows, rulesets, branch protection or webhooks exist. `actions/runs` was 0 after every push and merge.
 

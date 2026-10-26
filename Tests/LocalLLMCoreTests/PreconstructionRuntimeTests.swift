@@ -359,4 +359,17 @@ struct PreconstructionRuntimeTests {
         #expect(await runtime.calls.isEmpty)
         #expect(await runtime.loads == 0)
     }
+
+    @Test("S20/C3-02: unused oversized image selection cannot block a native text stage")
+    func unusedImageDoesNotRefuseText() async throws {
+        let w = try RtWorkspace(); defer { w.cleanUp() }
+        var image = rtModel("image", capabilities: [.ocr, .vision]); image.approximateMemoryBytes = 10_000
+        let runtime = RtRuntime()
+        let adapter = PreconRuntimeInterpreter(manager: rtManager(runtime, models: [rtModel(),image]),
+                                               textModelID: "text", imageModelID: "image")
+        let pipeline = try await adapter.pipeline(store: w.store, project: w.project)
+        let units = try await pipeline.run(w.sources())
+        #expect(units[0].status == .complete)
+        #expect(await runtime.calls.map { $0.0.modelID } == ["text"])
+    }
 }

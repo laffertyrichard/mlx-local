@@ -57,13 +57,15 @@ public struct InterpretationUnit: Codable, Equatable, Sendable {
     /// Explicit gaps: unread pages, uninterpreted chunks, failures, deferral reasons.
     public var coverage: [String] = []
     public var questions: [String] = []
+    public var plannedChunks: Int?
+    public var interpretedChunks: Int?
 
     public init(id: String, sourceId: String, pageIndex: Int, stage: InterpretationStage, status: Status,
                 candidates: [InterpretationCandidate] = [], coverage: [String] = [], questions: [String] = []) {
         self.id = id; self.sourceId = sourceId; self.pageIndex = pageIndex; self.stage = stage; self.status = status
         self.candidates = candidates; self.coverage = coverage; self.questions = questions
     }
-    private enum CodingKeys: String, CodingKey { case id, sourceId, pageIndex, stage, status, candidates, coverage, questions }
+    private enum CodingKeys: String, CodingKey { case id, sourceId, pageIndex, stage, status, candidates, coverage, questions, plannedChunks, interpretedChunks }
     public init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
         id = try values.decode(String.self, forKey: .id); sourceId = try values.decode(String.self, forKey: .sourceId)
@@ -72,6 +74,8 @@ public struct InterpretationUnit: Codable, Equatable, Sendable {
         candidates = try values.decode([InterpretationCandidate].self, forKey: .candidates)
         coverage = try values.decode([String].self, forKey: .coverage)
         questions = try values.decodeIfPresent([String].self, forKey: .questions) ?? []
+        plannedChunks = try values.decodeIfPresent(Int.self, forKey: .plannedChunks)
+        interpretedChunks = try values.decodeIfPresent(Int.self, forKey: .interpretedChunks)
     }
 
     var isReusable: Bool { [.complete, .held, .partial].contains(status) }
@@ -87,7 +91,7 @@ public struct VisionFocus: Sendable {
 
 public struct InterpretationPipeline: Sendable {
     /// Bump when code-side rules change (quote support, OCR checks, chunking). Prompts are digested separately.
-    public static let version = "precon-interpret-5"
+    public static let version = "precon-interpret-6"
     public var store: PreconProjectStore
     public var project: URL
     public var interpreter: PreconInterpreter
@@ -234,6 +238,7 @@ extension InterpretationPipeline {
     /// Bounded chunks in order; whatever exceeds the budget is recorded as uninterpreted, never dropped silently.
     private func extract(_ text: String, independent: Bool, into unit: inout InterpretationUnit) async {
         let chunks = Self.chunks(text, max: budget.maxInputChars)
+        unit.plannedChunks = chunks.count; unit.interpretedChunks = 0
         for (index, chunk) in chunks.prefix(budget.maxChunks).enumerated() {
             let raw: RawCandidates?
             do {
@@ -245,6 +250,7 @@ extension InterpretationPipeline {
                 return
             }
             accept(raw.candidates, verifiedAgainst: text, independent: independent, into: &unit)
+            unit.interpretedChunks = index + 1
         }
         if chunks.count > budget.maxChunks {
             unit.status = .partial
@@ -253,6 +259,7 @@ extension InterpretationPipeline {
     }
 
     private func readVision(_ page: PDFPage, crop: [Double], pageText: String, into unit: inout InterpretationUnit) async {
+        unit.plannedChunks = 1; unit.interpretedChunks = 0
         let label = "page \(unit.pageIndex + 1) crop \(crop.map { String(Int($0)) }.joined(separator: ","))"
         do {
             let raw = try await withImage(page, crop: crop) { image in
@@ -260,6 +267,7 @@ extension InterpretationPipeline {
             }
             guard let raw else { unit.status = .failed; unit.coverage.append("\(label): malformed output after retry"); return }
             accept(raw.candidates, verifiedAgainst: pageText, independent: !pageText.isEmpty, into: &unit)
+            unit.interpretedChunks = 1
         } catch { mark(&unit, error, label: label) }
     }
 

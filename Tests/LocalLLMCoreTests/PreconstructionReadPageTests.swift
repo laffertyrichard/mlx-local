@@ -143,4 +143,57 @@ struct PreconstructionReadPageTests {
         let score = try dataset.score([.init(caseID:item.id,units:units,nativeText:"oak\ntile\nbrick")],label:"MOCK")
         #expect(score.coverage.pagesSkipped == 1 && score.coverage.chunksInterpreted == 1 && score.coverage.chunksSkipped == 2)
     }
+
+    @Test("S22/C4-02: a unit verifies and opens one document and renders one page for many crops")
+    func batchThumbnails() async throws {
+        let root = FileManager.default.temporaryDirectory.appending(path: "PreconBatch-\(UUID())")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = try PreconProjectStore(root: root), project = root.appending(path: "project")
+        try FileManager.default.createDirectory(at: project, withIntermediateDirectories: true)
+        let item = PreconEvaluationCase(id: "batch", raster: false, lines: ["12 ft"], expected: ["12 ft"], absent: [])
+        let pdf = try PreconEvaluationSet(label: "MOCK", cases: [item]).generate(item, in: root)
+        let source = try #require(store.importSource(pdf, into: project, role: .proposed, revision: "TEST").first)
+        let candidates = (0..<12).map { index in
+            InterpretationCandidate(id: "C\(index)", kind: .dimension, text: "12 ft", quote: "12 ft", sourceId: source.id,
+                                    pageIndex: 0, bbox: [30,40,150,60], confidence: nil, heldReason: nil)
+        }
+        let events = ThumbnailEvents()
+        let result = try await PreconReadPage.thumbnails(candidates, source: source, store: store, project: project,
+                                                       observe: { events.record($0) })
+        #expect(result.count == 12 && result.values.allSatisfy { !$0.isEmpty })
+        #expect(events.counts == ["hash":1,"open":1,"render":1,"crop":12])
+        #expect(!events.usedMainThread)
+        let pause = ThumbnailPause()
+        let work = Task {
+            try await PreconReadPage.thumbnails(candidates, source: source, store: store, project: project,
+                beforeCandidate: { await pause.hold() })
+        }
+        await pause.waitForStart(); work.cancel(); await pause.release()
+        do { _ = try await work.value; Issue.record("Cancelled hydration must not publish thumbnails") }
+        catch is CancellationError {}
+        let stored = project.appending(path: source.path)
+        try FileManager.default.setAttributes([.posixPermissions:0o644], ofItemAtPath:stored.path)
+        try Data("changed".utf8).write(to:stored)
+        await #expect(throws: PreconProjectError.self) {
+            _ = try await PreconReadPage.thumbnails(candidates, source:source, store:store, project:project)
+        }
+    }
+}
+
+private final class ThumbnailEvents: @unchecked Sendable {
+    private let lock = NSLock()
+    private var events: [String:Int] = [:]
+    private var main = false
+    func record(_ event: String) { lock.lock(); defer { lock.unlock() }; events[event, default:0] += 1; main = main || Thread.isMainThread }
+    var counts: [String:Int] { lock.lock(); defer { lock.unlock() }; return events }
+    var usedMainThread: Bool { lock.lock(); defer { lock.unlock() }; return main }
+}
+private actor ThumbnailPause {
+    var started = false
+    var start: CheckedContinuation<Void,Never>?
+    var finish: CheckedContinuation<Void,Never>?
+    func hold() async { await withCheckedContinuation { finish = $0; started = true; start?.resume(); start = nil } }
+    func waitForStart() async { if !started { await withCheckedContinuation { start = $0 } } }
+    func release() { finish?.resume(); finish = nil }
 }

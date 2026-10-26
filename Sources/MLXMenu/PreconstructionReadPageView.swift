@@ -31,22 +31,26 @@ final class ReadPageController: ObservableObject {
             do {
                 let pipeline = try await adapter.pipeline(store: store, project: project)
                 let result = try await pipeline.run([source])
+                try Task.checkCancellation()
                 guard generation == token else { return }
                 units = result
                 message = result.flatMap(\.questions).joined(separator: "\n")
                 if message.isEmpty { message = "Page read. Candidates are evidence, not quantities." }
                 for unit in result {
+                    let crops = try await PreconReadPage.thumbnails(unit.candidates, source: source, store: store, project: project)
+                    try Task.checkCancellation()
+                    guard generation == token else { return }
                     for candidate in unit.candidates {
                         reviews[candidate.id] = try store.candidateReview(unitId: unit.id, candidateId: candidate.id,
                             candidateDigest: candidate.reviewDigest(), in: project)
-                        if let data = try PreconReadPage.thumbnail(candidate, source: source, store: store, project: project) {
+                        if let data = crops[candidate.id] {
                             thumbnails[candidate.id] = NSImage(data: data)
                         }
                     }
                 }
             } catch {
                 guard generation == token else { return }
-                message = error.localizedDescription
+                message = error is CancellationError ? "Cancelled. A model load already in progress may finish in the background." : error.localizedDescription
             }
             if generation == token { running = false; task = nil }
         }

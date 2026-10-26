@@ -11,3 +11,5 @@ From the repository root, after building: `.build/debug/PreconEvaluation --autho
 No arguments, missing authorization, missing output, unknown flags, missing installed models or missing runtime executables refuse. The executable never downloads models. It creates a disposable data root, keeps inference evidence separate from takeoff, writes an exclusive report, and shuts down its own runtime manager. The output path must not exist; its parent must exist. Real execution needs user authorization and a quiet machine.
 
 Metrics stay separate: exact expected-item extraction recall; literal native-source quote support (OCR does not validate itself); interpreted/skipped pages and chunks; deterministic area agreement using the two known rectangles. Absent-item detections are a separate negative-control list. No extraction or review decision contributes to the area metric. Missing denominators or unknown chunk counts are reported unavailable. These metrics do not certify construction accuracy.
+
+Negative controls are exact-match sentinels; not a general hallucination detector.

@@ -38,6 +38,25 @@ public struct ProjectCheckpoint: Codable, Equatable, Sendable {
     public var createdAt: Date
 }
 
+public enum CandidateReviewDecision: String, Codable, Sendable { case accepted, rejected }
+
+public struct CandidateReview: Codable, Equatable, Sendable {
+    public var unitId: String
+    public var candidateId: String
+    public var candidateDigest: String
+    public var decision: CandidateReviewDecision
+    public var note: String?
+}
+
+public struct CandidateReviewState: Equatable, Sendable {
+    public var record: CandidateReview
+    public var stale: Bool
+}
+
+extension InterpretationCandidate {
+    public func reviewDigest() throws -> String { StableDigest.sha256(try PreconJSON.encoder.encode(self)) }
+}
+
 public struct PreconProjectStore: Sendable {
     public let root: URL
     /// Test seam: called with each project-relative path just before `saveRevision(_:measurements:in:)` writes it,
@@ -174,6 +193,29 @@ public struct PreconProjectStore: Sendable {
             throw PreconProjectError.corrupt("interpretation/\(id).json")
         }
         return unit
+    }
+
+    public func saveCandidateReview(unitId: String, candidateId: String, candidateDigest: String,
+                                    decision: CandidateReviewDecision, note: String?, in project: URL) throws -> URL {
+        let record = CandidateReview(unitId: unitId, candidateId: candidateId, candidateDigest: candidateDigest,
+                                     decision: decision, note: note)
+        return try writeNew(PreconJSON.encoder.encode(record), to: reviewURL(unitId, candidateId, in: project))
+    }
+
+    public func candidateReview(unitId: String, candidateId: String, candidateDigest: String,
+                                in project: URL) throws -> CandidateReviewState? {
+        let url = try reviewURL(unitId, candidateId, in: project)
+        guard FileManager.default.fileExists(atPath: url.path) else { return nil }
+        guard let record = try? PreconJSON.decoder.decode(CandidateReview.self, from: Data(contentsOf: url)),
+              record.unitId == unitId, record.candidateId == candidateId else {
+            throw PreconProjectError.corrupt("interpretation/reviews/\(url.lastPathComponent)")
+        }
+        return CandidateReviewState(record: record, stale: record.candidateDigest != candidateDigest)
+    }
+
+    private func reviewURL(_ unitId: String, _ candidateId: String, in project: URL) throws -> URL {
+        let key = StableDigest.sha256(try PreconJSON.encoder.encode([unitId, candidateId]))
+        return try contained(try contained(project).appending(path: "interpretation/reviews/\(key).json"))
     }
 
     /// Binds the saved revision bytes (calibration included), every source hash and the listed measurement files.

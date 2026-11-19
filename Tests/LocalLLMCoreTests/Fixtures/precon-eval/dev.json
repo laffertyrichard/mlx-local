@@ -1,0 +1,405 @@
+{
+  "label": "synthetic-dev-v1",
+  "cases": [
+    {
+      "id": "v1-fraction",
+      "raster": false,
+      "lines": [
+        "A101",
+        "Room Cedar",
+        "Width 12 1/2 ft",
+        "Finish oak"
+      ],
+      "expected": [
+        "A101",
+        "Cedar",
+        "12 1/2 ft",
+        "oak"
+      ],
+      "absent": [
+        "marble"
+      ],
+      "widthFeet": 12.5,
+      "heightFeet": 8,
+      "areaSF": 100
+    },
+    {
+      "id": "v1-exclusion",
+      "raster": false,
+      "lines": [
+        "A102",
+        "Room Birch",
+        "EXCLUDE painting existing walls"
+      ],
+      "expected": [
+        "A102",
+        "Birch",
+        "EXCLUDE painting existing walls"
+      ],
+      "absent": [
+        "Paint all walls"
+      ]
+    },
+    {
+      "id": "v1-no-quantity",
+      "raster": false,
+      "lines": [
+        "A103",
+        "Concept only - NOT FOR QUANTITY TAKEOFF",
+        "Verify all dimensions in field"
+      ],
+      "expected": [
+        "A103",
+        "Concept only - NOT FOR QUANTITY TAKEOFF",
+        "Verify all dimensions in field"
+      ],
+      "absent": [
+        "200 SF"
+      ]
+    },
+    {
+      "id": "v1-schedule",
+      "raster": false,
+      "lines": [
+        "A104 FINISH SCHEDULE",
+        "ROOM | FLOOR | WALL",
+        "Maple | tile | plaster",
+        "Ash | cork | brick"
+      ],
+      "expected": [
+        "A104",
+        "Maple",
+        "tile",
+        "plaster",
+        "Ash",
+        "cork",
+        "brick"
+      ],
+      "absent": [
+        "carpet",
+        "ROOM",
+        "FLOOR",
+        "WALL"
+      ],
+      "widthFeet": 10,
+      "heightFeet": 9,
+      "areaSF": 90
+    },
+    {
+      "id": "v1-scan",
+      "raster": true,
+      "lines": [
+        "A105",
+        "Room Pine",
+        "18 ft",
+        "Finish concrete"
+      ],
+      "expected": [
+        "A105",
+        "Pine",
+        "18 ft",
+        "concrete"
+      ],
+      "absent": [
+        "granite"
+      ]
+    },
+    {
+      "id": "height",
+      "raster": false,
+      "lines": [
+        "A-110",
+        "Room Spruce",
+        "Height 9 ft",
+        "Ceiling drywall"
+      ],
+      "expected": [
+        "A-110",
+        "Spruce",
+        "9 ft",
+        "drywall"
+      ],
+      "absent": [
+        "stucco"
+      ]
+    },
+    {
+      "id": "space",
+      "raster": false,
+      "lines": [
+        "S3.2",
+        "Space Poplar",
+        "Length 24 ft 3 in",
+        "Base walnut"
+      ],
+      "expected": [
+        "S3.2",
+        "Poplar",
+        "24 ft 3 in",
+        "walnut"
+      ],
+      "absent": [
+        "linoleum"
+      ]
+    },
+    {
+      "id": "inches",
+      "raster": false,
+      "lines": [
+        "A1.01",
+        "RM Elm",
+        "36 in",
+        "Floor slate"
+      ],
+      "expected": [
+        "A1.01",
+        "Elm",
+        "36 in",
+        "slate"
+      ],
+      "absent": [
+        "laminate"
+      ]
+    },
+    {
+      "id": "general-notes",
+      "raster": false,
+      "lines": [
+        "G-001",
+        "GENERAL NOTES",
+        "VERIFY existing conditions before demolition",
+        "EXCLUDE furniture and equipment",
+        "BY OWNER: window treatments"
+      ],
+      "expected": [
+        "G-001",
+        "VERIFY existing conditions before demolition",
+        "EXCLUDE furniture and equipment",
+        "BY OWNER: window treatments"
+      ],
+      "absent": [
+        "150 SF"
+      ]
+    },
+    {
+      "id": "lookalikes",
+      "raster": false,
+      "lines": [
+        "A-210",
+        "Room Fir",
+        "Door D104 to remain",
+        "M10 anchor bolts by others",
+        "Rev R2"
+      ],
+      "expected": [
+        "A-210",
+        "Fir",
+        "Door D104 to remain",
+        "M10 anchor bolts by others"
+      ],
+      "absent": [
+        "D104",
+        "M10",
+        "R2"
+      ]
+    },
+    {
+      "id": "schedule-base",
+      "raster": false,
+      "lines": [
+        "A-701 FINISH SCHEDULE",
+        "ROOM | FLOOR | BASE",
+        "Beech | sisal | steel",
+        "Teak | epoxy | aluminum"
+      ],
+      "expected": [
+        "A-701",
+        "Beech",
+        "sisal",
+        "steel",
+        "Teak",
+        "epoxy",
+        "aluminum"
+      ],
+      "absent": [
+        "ROOM",
+        "FLOOR",
+        "BASE"
+      ],
+      "widthFeet": 12,
+      "heightFeet": 10,
+      "areaSF": 120
+    },
+    {
+      "id": "by-dimension",
+      "raster": false,
+      "lines": [
+        "A-120",
+        "Room Hemlock",
+        "10 ft x 12 ft",
+        "Finish quartz"
+      ],
+      "expected": [
+        "A-120",
+        "Hemlock",
+        "10 ft x 12 ft",
+        "quartz"
+      ],
+      "absent": [
+        "120 SF"
+      ]
+    },
+    {
+      "id": "scan-room",
+      "raster": true,
+      "lines": [
+        "A-130",
+        "Room Cypress",
+        "15 ft",
+        "Floor bamboo"
+      ],
+      "expected": [
+        "A-130",
+        "Cypress",
+        "15 ft",
+        "bamboo"
+      ],
+      "absent": [
+        "zinc"
+      ]
+    },
+    {
+      "id": "scan-notes",
+      "raster": true,
+      "lines": [
+        "S-201",
+        "VERIFY beam sizes with engineer",
+        "EXCLUDE shoring"
+      ],
+      "expected": [
+        "S-201",
+        "VERIFY beam sizes with engineer",
+        "EXCLUDE shoring"
+      ],
+      "absent": [
+        "copper"
+      ]
+    },
+    {
+      "id": "two-rooms",
+      "raster": false,
+      "lines": [
+        "A-140",
+        "Room Redwood",
+        "Room Sequoia",
+        "Width 11 ft",
+        "Width 13 ft 6 in"
+      ],
+      "expected": [
+        "A-140",
+        "Redwood",
+        "Sequoia",
+        "11 ft",
+        "13 ft 6 in"
+      ],
+      "absent": [
+        "24 ft 6 in"
+      ]
+    },
+    {
+      "id": "no-sheet",
+      "raster": false,
+      "lines": [
+        "Room Acacia",
+        "Finish travertine",
+        "Length 8 ft"
+      ],
+      "expected": [
+        "Acacia",
+        "travertine",
+        "8 ft"
+      ],
+      "absent": [
+        "stucco"
+      ]
+    },
+    {
+      "id": "cross-reference",
+      "raster": false,
+      "lines": [
+        "A-150",
+        "Room Ebony",
+        "See detail 4 on A-501",
+        "Finish onyx"
+      ],
+      "expected": [
+        "A-150",
+        "Ebony",
+        "onyx"
+      ],
+      "absent": []
+    },
+    {
+      "id": "feet-inches",
+      "raster": false,
+      "lines": [
+        "A-160",
+        "Room Mahogany",
+        "Height 7 ft 10 1/2 in",
+        "Wall fiber cement"
+      ],
+      "expected": [
+        "A-160",
+        "Mahogany",
+        "7 ft 10 1/2 in",
+        "fiber cement"
+      ],
+      "absent": [
+        "linoleum"
+      ]
+    },
+    {
+      "id": "schedule-ceiling",
+      "raster": false,
+      "lines": [
+        "A-702 CEILING SCHEDULE",
+        "SPACE | CEILING | HEIGHT",
+        "Olive | mineral fiber | 9 ft",
+        "Laurel | wood slat | 10 ft"
+      ],
+      "expected": [
+        "A-702",
+        "Olive",
+        "mineral fiber",
+        "9 ft",
+        "Laurel",
+        "wood slat",
+        "10 ft"
+      ],
+      "absent": [
+        "SPACE",
+        "CEILING",
+        "HEIGHT"
+      ]
+    },
+    {
+      "id": "preliminary",
+      "raster": false,
+      "lines": [
+        "A-170",
+        "PRELIMINARY - NOT FOR CONSTRUCTION",
+        "Room Chestnut",
+        "Dimensions are approximate"
+      ],
+      "expected": [
+        "A-170",
+        "PRELIMINARY - NOT FOR CONSTRUCTION",
+        "Chestnut",
+        "Dimensions are approximate"
+      ],
+      "absent": [
+        "100 SF"
+      ]
+    }
+  ]
+}

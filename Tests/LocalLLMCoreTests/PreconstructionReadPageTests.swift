@@ -78,6 +78,45 @@ struct PreconstructionReadPageTests {
         #expect(unavailable.extraction.display == "unavailable" && unavailable.quantityAccuracy.display == "unavailable")
     }
 
+    @Test("sheet IDs are read only from line starts", arguments: [
+        ("A101\nRoom", ["A101"]), ("A-201 PLAN\n  S2.1\nA1.01", ["A-201", "S2.1", "A1.01"]), ("G-002\nG-002", ["G-002"]),
+        ("Door D104\nM10 bolts\nRev R2\nSee A-501\nA1012\nA-10\nA-101b", []),
+    ])
+    func sheetIDPattern(text: String, expected: [String]) {
+        #expect(InterpretationPipeline.sheetIDs(in: text) == expected)
+    }
+
+    @Test("a sheet ID found in the text is offered once on native text and held on a scan",
+          arguments: [(false, false), (false, true), (true, false), (true, true)])
+    func sheetCandidates(raster: Bool, modelAlsoFinds: Bool) async throws {
+        let root = FileManager.default.temporaryDirectory.appending(path: "PreconSheet-\(UUID())")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = try PreconProjectStore(root: root), project = root.appending(path: "project")
+        try FileManager.default.createDirectory(at: project, withIntermediateDirectories: true)
+        let item = PreconEvaluationCase(id: "sheet", raster: raster, lines: ["B-310", "Room Yew"], expected: [], absent: [])
+        let pdf = try PreconEvaluationSet(label: "sheet", cases: [item]).generate(item, in: root)
+        let sources = try store.importSource(pdf, into: project, role: .proposed, revision: "T")
+        let interpreter: PreconInterpreter = { request in
+            if request.stage == .ocr { return #"{"text":"B-310\nRoom Yew","confidence":1}"# }
+            return modelAlsoFinds ? #"{"candidates":[{"kind":"sheet","text":"B-310","quote":"B-310","confidence":0.9}]}"# : #"{"candidates":[]}"#
+        }
+        let unit = try #require(try await InterpretationPipeline(store: store, project: project, interpreter: interpreter).run(sources).first)
+        let sheets = unit.candidates.filter { $0.kind == .sheet }
+        #expect(sheets.map(\.text) == ["B-310"])
+        #expect((sheets.first?.heldReason == nil) == !raster)
+        #expect(unit.status == (raster ? .held : .complete))
+        if !modelAlsoFinds { #expect(sheets.first?.confidence == nil && sheets.first?.quote == "B-310") }
+    }
+
+    @Test("the worked example shares no value with either evaluation fixture", arguments: ["expected", "dev"])
+    func exampleIsDisjoint(fixture: String) throws {
+        let dataset = try PreconEvaluationSet.load(Bundle.module.url(forResource: fixture, withExtension: "json", subdirectory: "precon-eval")!)
+        for value in dataset.cases.flatMap({ $0.expected + $0.absent }) {
+            #expect(!InterpretationPipeline.containsBounded(InterpretationPipeline.candidateExample, value), "example repeats \(value)")
+        }
+    }
+
     @Test("S15: deferred pages and absent claims cannot improve evaluation scores")
     func negativeEvaluation() throws {
         let item = PreconEvaluationCase(id: "case", raster: false, lines: ["oak"], expected: ["oak"], absent: ["marble"])

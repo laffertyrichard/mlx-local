@@ -1,8 +1,16 @@
 # Synthetic interpretation evaluation
 
-`expected.json` was written by hand from the page-generator inputs before any interpreter run. Four pages draw native text; the fifth rasterizes its text before embedding it in a PDF (no text layer). The fraction, exclusion, non-quantity note and schedule are deliberate. `absent` items are negative controls, never page content. Geometry dimensions and expected areas are independent generator inputs, not extracted quantities.
+Two sets, same generator:
+- `dev.json` (`synthetic-dev-v1`, 20 pages): for tuning prompts and rules. Its first five cases are the original held-out pages, moved here after their results had been read item by item.
+- `expected.json` (`synthetic-held-out-v2`, 5 pages): held out. Run it once after tuning and report the score; if you read its per-item results, replace it.
 
-The test interpreter is scripted and labelled MOCK. These small cases are held out from prompt tuning, not evidence of model accuracy. Run the explicitly authorized PreconEvaluation command separately for real-model evaluation; no real run is part of the implementation task.
+Both were written by hand from the page-generator inputs before any interpreter run on them. Scans rasterize their text before embedding it in a PDF (no text layer). `absent` items are negative controls, never page content as a candidate: unrelated values, table column headers, and sheet-ID look-alikes such as door tags. Geometry dimensions and expected areas are independent generator inputs, not extracted quantities.
+
+Label convention (exact match): room is the bare name (`Cedar`, not `Room Cedar`); material is the bare material (`oak`, not `Finish oak`); dimension is the value with units and no label (`12 1/2 ft`); a note is the whole line verbatim; a sheet is the bare ID (`A-101`).
+
+The worked example in `InterpretationPipeline.candidateExample` must share no value with either set (tested).
+
+The test interpreter is scripted and labelled MOCK. Neither set is evidence of model accuracy on real drawings. Run the explicitly authorized PreconEvaluation command separately for real-model evaluation (`--dataset` selects the set).
 
 ## Separate authorized real run (not run during implementation)
 

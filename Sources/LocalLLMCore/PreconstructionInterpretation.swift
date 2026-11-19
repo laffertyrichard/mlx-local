@@ -91,7 +91,7 @@ public struct VisionFocus: Sendable {
 
 public struct InterpretationPipeline: Sendable {
     /// Bump when code-side rules change (quote support, OCR checks, chunking). Prompts are digested separately.
-    public static let version = "precon-interpret-6"
+    public static let version = "precon-interpret-7"
     public var store: PreconProjectStore
     public var project: URL
     public var interpreter: PreconInterpreter
@@ -209,10 +209,34 @@ extension InterpretationPipeline {
     }
 
     public static let defaultOCRInstruction = #"Transcribe all text in this single image. Return only JSON: {"text": string, "confidence": number 0-1}."#
+    /// Values in the worked example must stay out of both evaluation fixtures (tested), so a parroted example can't score.
+    static let candidateExample = """
+        Example input:
+        Room Willow
+        Depth 6 ft 2 in
+        Trim cherry
+        HOLD for owner approval
+        AREA | TRIM
+        Yew | nickel
+        Example output: {"candidates": [{"kind": "room", "text": "Willow", "quote": "Room Willow", "confidence": 0.9, "bbox": null}, \
+        {"kind": "dimension", "text": "6 ft 2 in", "quote": "Depth 6 ft 2 in", "confidence": 0.9, "bbox": null}, \
+        {"kind": "material", "text": "cherry", "quote": "Trim cherry", "confidence": 0.9, "bbox": null}, \
+        {"kind": "note", "text": "HOLD for owner approval", "quote": "HOLD for owner approval", "confidence": 0.9, "bbox": null}, \
+        {"kind": "room", "text": "Yew", "quote": "Yew", "confidence": 0.9, "bbox": null}, \
+        {"kind": "material", "text": "nickel", "quote": "nickel", "confidence": 0.9, "bbox": null}]}
+        """
     public static let defaultCandidateInstruction = """
-        List dimensions, rooms, materials, notes and sheet IDs stated in the input. Do not infer anything not written. \
+        List the rooms, materials, dimensions and notes written in the input. Do not infer, compute or combine anything.
+        - room: the name only, without a label such as "Room", "RM" or "Space".
+        - material: the material only, without the surface it is on, such as "Finish", "Floor", "Wall", "Base" or "Ceiling".
+        - dimension: the value with its units exactly as written, without a label such as "Width" or "Height".
+        - note: a whole instruction, exclusion or status line, word for word.
+        One candidate per item. Skip sheet numbers, titles and table column headers. In a table, list each cell by what \
+        its column holds.
         Return only JSON: {"candidates": [{"kind": "dimension|room|material|note|sheet", "text": string, \
         "quote": exact source text, "confidence": number 0-1, "bbox": [x, y, w, h] or null}]}.
+        \(candidateExample)
+        Now the input:
         """
 
     /// Returns nil and marks the unit when the page can't be read; an unread page is never empty text.
@@ -252,6 +276,14 @@ extension InterpretationPipeline {
             accept(raw.candidates, verifiedAgainst: text, independent: independent, into: &unit)
             unit.interpretedChunks = index + 1
         }
+        // Sheet IDs are read from the text itself: a pattern is more reliable here than asking a model.
+        for id in Self.sheetIDs(in: text) where !unit.candidates.contains(where: { $0.kind == .sheet && $0.text == id }) {
+            let number = String(format: "%03d", unit.candidates.count + 1)
+            unit.candidates.append(InterpretationCandidate(id: "C-\(unit.id.prefix(8))-\(number)", kind: .sheet, text: id, quote: id,
+                                                           sourceId: unit.sourceId, pageIndex: unit.pageIndex, bbox: nil,
+                                                           confidence: nil, heldReason: independent ? nil : Self.scannedPageHold))
+            if !independent, unit.status == .complete { unit.status = .held }
+        }
         if chunks.count > budget.maxChunks {
             unit.status = .partial
             unit.coverage.append("page \(unit.pageIndex + 1): \(chunks.count - budget.maxChunks) of \(chunks.count) text chunks not interpreted (input budget)")
@@ -280,7 +312,7 @@ extension InterpretationPipeline {
             let quote = item.quote?.trimmingCharacters(in: .whitespacesAndNewlines)
             let quoteWords = Self.normalized(quote ?? "").split(separator: " ")
             let reason: String? = quoteWords.isEmpty ? "no source quote"
-                : !independent ? "no independent text layer (scanned page); verify the quote against the source image"
+                : !independent ? Self.scannedPageHold
                 : !Self.containsBounded(source, Self.normalized(quote!)) ? "quote not found in source text"
                 : !Self.isSubsequence(Self.normalized(item.text).split(separator: " "), of: quoteWords)
                     ? "candidate text not supported by its quote"
@@ -380,6 +412,19 @@ extension InterpretationPipeline {
             if !splitsBefore && !splitsAfter { return true }
         }
         return false
+    }
+
+    static let scannedPageHold = "no independent text layer (scanned page); verify the quote against the source image"
+
+    // ponytail: an ID must start a line and look like A101, A-101, S2.1 or A1.01. A door or equipment tag alone on a
+    // line (D104) still matches, and IDs inside a sentence are skipped; use title-block position if real sheets need it.
+    static func sheetIDs(in text: String) -> [String] {
+        var seen = Set<String>()
+        return text.split(separator: "\n").compactMap { line in
+            let line = line.trimmingCharacters(in: .whitespaces)
+            guard let match = line.firstMatch(of: #/^[A-Z]{1,2}-?(?:\d{3}|\d{1,2}\.\d{1,2})(?![A-Za-z0-9.\/-])/#) else { return nil }
+            return seen.insert(String(match.output)).inserted ? String(match.output) : nil
+        }
     }
 
     /// Every candidate word appears in the quote, in the same order: "10 ft x 12 ft" is not "12 ft x 10 ft".

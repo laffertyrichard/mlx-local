@@ -52,7 +52,10 @@ private actor RtRuntime: ModelRuntime {
     func health(model: RegisteredModel) async -> ModelHealth { .healthy }
     func execute(model: RegisteredModel?, stage: RouteStage, input: StageExecutionInput) async throws -> PipelineArtifact {
         calls.append((stage, input))
-        return PipelineArtifact(kind: .json, content: try await response(calls.count, stage, input))
+        let content = try await response(calls.count, stage, input)
+        // Same shape as OpenAIWorkerRuntime: OCR is page markdown plus a readability score, never JSON.
+        if stage.kind == .ocr { return PipelineArtifact(kind: .markdown, content: "## Page 1\n\n" + content, confidence: 0.99) }
+        return PipelineArtifact(kind: .json, content: content)
     }
 }
 
@@ -346,7 +349,8 @@ struct PreconstructionRuntimeTests {
                 let attachment = try #require(input.request.attachments.first)
                 #expect(attachment.modality == .image && attachment.mimeType == "image/png")
                 #expect(FileManager.default.fileExists(atPath: attachment.url.path))
-                return #"{"text":"12 ft","confidence":0.99}"#
+                #expect(!input.requiresStructuredOutput && input.request.text.isEmpty)
+                return "12 ft"
             }
             return rtAnswer
         }

@@ -54,6 +54,10 @@ public struct PreconRuntimeInterpreter: Sendable {
         self.textProfile = textProfile; self.imageProfile = imageProfile
     }
 
+    /// Part of the unit ID: bump when the OCR prompt or the mapping from the runtime's OCR artifact changes.
+    static let ocrContract = "ocr-plain-1"
+    private static let ocrPageHeader = "## Page 1\n\n"
+
     public func profileDigest() async throws -> String {
         let models = await manager.registeredModels()
         let selected = [(textModelID, textProfile), (imageModelID, imageProfile)]
@@ -63,7 +67,7 @@ public struct PreconRuntimeInterpreter: Sendable {
             if let profile, profile.baseModelID != id { throw PreconRuntimeError.unsupported("Profile does not belong to \(id)") }
             return [id, model.backend.rawValue, profile?.configurationDigest ?? "default"].joined(separator: "|")
         }
-        return StableDigest.sha256(try JSONEncoder().encode(parts))
+        return StableDigest.sha256(try JSONEncoder().encode(parts + [Self.ocrContract]))
     }
 
     public func pipeline(store: PreconProjectStore, project: URL) async throws -> InterpretationPipeline {
@@ -118,8 +122,11 @@ public struct PreconRuntimeInterpreter: Sendable {
             guard let image = input.image, image.isFileURL else { throw PreconRuntimeError.unsupported("Missing local page PNG") }
             attachments = [RequestAttachment(url: image, modality: .image, mimeType: "image/png")]
         }
-        let request = InferenceRequest(text: input.instruction + "\n" + (input.text ?? ""), attachments: attachments,
-                                       requiresStructuredOutput: true, localOnly: true, forcedModelID: id)
+        // The worker runtime answers OCR with page markdown under its own fixed prompt, never JSON (OCR models such as
+        // dots.ocr don't follow a JSON instruction), so send no instruction and build the pipeline's JSON below.
+        let ocr = input.stage == .ocr
+        let request = InferenceRequest(text: ocr ? "" : input.instruction + "\n" + (input.text ?? ""), attachments: attachments,
+                                       requiresStructuredOutput: !ocr, localOnly: true, forcedModelID: id)
         let kind: PipelineStageKind = input.stage == .ocr ? .ocr : input.stage == .vision ? .visionExtraction : .reasoning
         let stage = RouteStage(kind: kind, modelID: id, backend: model.backend, requiredCapabilities: [capability],
                                inputModalities: [modality], modelProfile: profile)
@@ -148,7 +155,13 @@ public struct PreconRuntimeInterpreter: Sendable {
             }
             try Task.checkCancellation()
             guard let artifact = trace.artifacts.last else { throw PreconRuntimeError.runtimeFailed("No artifact returned") }
-            return artifact.content
+            guard ocr else { return artifact.content }
+            // confidence is the runtime's line-uniqueness/length readability score, not a model probability; a missing
+            // score stays null and the pipeline treats the page as unread.
+            let text = artifact.content.hasPrefix(Self.ocrPageHeader)
+                ? String(artifact.content.dropFirst(Self.ocrPageHeader.count)) : artifact.content
+            return String(decoding: try JSONSerialization.data(withJSONObject:
+                ["text": text, "confidence": artifact.confidence as Any? ?? NSNull()]), as: UTF8.self)
         } catch {
             if Task.isCancelled || error is CancellationError { throw CancellationError() }
             // ponytail: execute wraps underlying admission/runtime errors; preserve the reason, not a guessed subtype.

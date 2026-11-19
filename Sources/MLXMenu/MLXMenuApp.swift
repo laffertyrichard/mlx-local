@@ -31,7 +31,7 @@ struct MLXMenuApp: App {
         .windowResizability(.contentMinSize)
 
         Window("Preconstruction Takeoff", id: "takeoff") {
-            PreconstructionView()
+            PreconstructionView(manager: autoRouter.manager)
         }
         .defaultSize(width: 1100, height: 760)
         .windowResizability(.contentMinSize)

@@ -38,7 +38,7 @@ final class TakeoffController: ObservableObject {
     let template: URL? = [Bundle.main.resourceURL?.appending(path: "preconstruction-template"),
                           URL(filePath: FileManager.default.currentDirectoryPath).appending(path: "Preconstruction/templates/project")]
         .compactMap { $0 }.first { FileManager.default.fileExists(atPath: $0.path) }
-    private var store: PreconProjectStore?
+    private(set) var store: PreconProjectStore?
 
     private(set) var measurements: TakeoffMeasurements? {
         get { currentSource.flatMap { drafts[$0] } }
@@ -367,6 +367,7 @@ final class TakeoffController: ObservableObject {
 }
 
 struct PreconstructionView: View {
+    let manager: ModelResourceManager
     @StateObject private var takeoff = TakeoffController()
     @State private var newProjectName = ""
 
@@ -382,8 +383,13 @@ struct PreconstructionView: View {
                         TakeoffCanvas(takeoff: takeoff)
                     }
                     .frame(minWidth: 480)
-                    TakeoffReviewPanel(takeoff: takeoff, measurements: measurements)
-                        .frame(minWidth: 320, idealWidth: 360, maxWidth: 480)
+                    VStack(spacing: 0) {
+                        TakeoffReviewPanel(takeoff: takeoff, measurements: measurements)
+                        if let store = takeoff.store, let project = takeoff.project {
+                            Divider()
+                            ReadPagePanel(manager: manager, store: store, project: project, source: measurements.source)
+                        }
+                    }.frame(minWidth: 320, idealWidth: 360, maxWidth: 480)
                 }
             } else if !takeoff.staleReasons.isEmpty {
                 staleRecovery.frame(maxWidth: .infinity, maxHeight: .infinity)

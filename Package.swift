@@ -11,6 +11,7 @@ let package = Package(
         .executable(name: "RouterEvaluation", targets: ["RouterEvaluation"]),
         .executable(name: "MultimodalSmoke", targets: ["MultimodalSmoke"]),
         .executable(name: "ConstructionTracer", targets: ["ConstructionTracer"]),
+        .executable(name: "PreconEvaluation", targets: ["PreconEvaluation"]),
     ],
     targets: [
         .target(name: "LocalLLMCore"),
@@ -19,6 +20,7 @@ let package = Package(
         .executableTarget(name: "RouterEvaluation", dependencies: ["LocalLLMCore"]),
         .executableTarget(name: "MultimodalSmoke", dependencies: ["LocalLLMCore", "LocalInferenceBackends"]),
         .executableTarget(name: "ConstructionTracer", dependencies: ["LocalLLMCore", "LocalInferenceBackends"]),
-        .testTarget(name: "LocalLLMCoreTests", dependencies: ["LocalLLMCore"]),
+        .executableTarget(name: "PreconEvaluation", dependencies: ["LocalLLMCore", "LocalInferenceBackends"]),
+        .testTarget(name: "LocalLLMCoreTests", dependencies: ["LocalLLMCore"], resources: [.copy("Fixtures/precon-eval")]),
     ]
 )

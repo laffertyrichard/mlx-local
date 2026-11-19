@@ -163,6 +163,38 @@ public struct PreconEvaluationOptions: Sendable {
     public var imageModelID: String?
     public var output: String
     public var dataset: String
+    public func runtimes(models: [RegisteredModel], fileExists: (String) -> Bool,
+                         make: (RegisteredModel) throws -> any ModelRuntime) throws -> [InferenceBackend: any ModelRuntime] {
+        try preflight(models: models, fileExists: fileExists)
+        var runtimes: [InferenceBackend: any ModelRuntime] = [:]
+        let ids = [textModelID] + (imageModelID.map { [$0] } ?? [])
+        for id in ids {
+            let model = models.first { $0.id == id }!
+            if runtimes[model.backend] != nil { continue }
+            runtimes[model.backend] = try make(model)
+        }
+        return runtimes
+    }
+
+    public func preflight(models: [RegisteredModel], fileExists: (String) -> Bool) throws {
+        let ids = [textModelID] + (imageModelID.map { [$0] } ?? [])
+        for id in ids {
+            guard let model = models.first(where: { $0.id == id }), fileExists(model.localPath.path),
+                  model.health != .failed, model.health != .unavailable else {
+                throw PreconRuntimeError.unavailable("Model is not installed: \(id)")
+            }
+        }
+        guard PreconReadPage.textModels(models).contains(where: { $0.id == textModelID }) else {
+            throw PreconRuntimeError.unsupported("Text selection lacks structured reasoning")
+        }
+        if let image = imageModelID, !models.contains(where: {
+            $0.id == image && $0.capabilities.contains(.ocr) && $0.inputModalities.contains(.image)
+                && $0.supportsStructuredOutput
+        }) {
+            throw PreconRuntimeError.unsupported("Image selection lacks structured OCR with image input")
+        }
+    }
+
     public static let usage = "Refused without authorization. Usage: PreconEvaluation --authorized --text-model <installed-id> [--image-model <installed-id>] --output <new-report.json> [--dataset <expected.json>]"
     public static func parse(_ arguments: [String]) throws -> Self {
         var values: [String:String] = [:], authorized = false, index = 0

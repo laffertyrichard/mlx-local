@@ -116,6 +116,68 @@ private func rtPipeline(_ w: RtWorkspace, _ adapter: PreconRuntimeInterpreter) a
 
 @Suite("Preconstruction runtime adapter MOCK")
 struct PreconstructionRuntimeTests {
+    @Test("C5-01: invalid OCR selection fails before runtime work",
+          arguments: ["vision-only", "no-image-input", "unstructured"])
+    func evaluationPreflightRejectsInvalidOCR(_ invalid: String) async throws {
+        var image = rtModel("image", capabilities: invalid == "vision-only" ? [.vision] : [.ocr])
+        if invalid == "no-image-input" { image.inputModalities = [.text] }
+        if invalid == "unstructured" { image.supportsStructuredOutput = false }
+        let models = [rtModel(), image]
+        let options = PreconEvaluationOptions(textModelID: "text", imageModelID: "image", output: "unused", dataset: "unused")
+        let runtime = RtRuntime()
+        var factoryCalls = 0
+        do {
+            _ = try options.runtimes(models: models, fileExists: { _ in true }) { _ in
+                factoryCalls += 1
+                return runtime
+            }
+            Issue.record("must refuse before runtime work")
+        } catch PreconRuntimeError.unsupported(let reason) {
+            #expect(reason.contains("OCR"))
+        }
+        #expect(factoryCalls == 0)
+        #expect(await runtime.loads == 0)
+        #expect(await runtime.calls.isEmpty)
+    }
+
+    @Test("C5-01: genuine OCR and text-only selections build one runtime per backend",
+          arguments: ["text-only", "shared-backend", "distinct-backends"])
+    func evaluationPreflightAcceptsSupportedModels(_ selection: String) throws {
+        let includeImage = selection != "text-only"
+        var image = rtModel("image", capabilities: [.ocr])
+        if selection == "distinct-backends" { image.backend = .mlxVLM }
+        let models = [rtModel(), image]
+        let options = PreconEvaluationOptions(textModelID: "text", imageModelID: includeImage ? "image" : nil,
+                                              output: "unused", dataset: "unused")
+        var checkedPaths: [String] = []
+        var builtModels: [String] = []
+        let runtimes = try options.runtimes(models: models, fileExists: { checkedPaths.append($0); return true }) { model in
+            builtModels.append(model.id)
+            return RtRuntime()
+        }
+        #expect(checkedPaths == (includeImage ? models : [models[0]]).map { $0.localPath.path })
+        #expect(builtModels == (selection == "distinct-backends" ? ["text", "image"] : ["text"]))
+        #expect(Set(runtimes.keys) == (selection == "distinct-backends" ? [.mlxLM, .mlxVLM] : [.mlxLM]))
+    }
+
+    @Test("C5-01: installation and health checks remain required",
+          arguments: ["missing", "absent-file", "failed", "unavailable"])
+    func evaluationPreflightRejectsUnavailableModels(_ invalid: String) throws {
+        var model = rtModel()
+        if invalid == "failed" { model.health = .failed }
+        if invalid == "unavailable" { model.health = .unavailable }
+        let options = PreconEvaluationOptions(textModelID: "text", imageModelID: nil, output: "unused", dataset: "unused")
+        do {
+            _ = try options.runtimes(models: invalid == "missing" ? [] : [model], fileExists: { _ in invalid != "absent-file" }) { _ in
+                Issue.record("must refuse before constructing runtime")
+                return RtRuntime()
+            }
+            Issue.record("must refuse unavailable model")
+        } catch PreconRuntimeError.unavailable(let reason) {
+            #expect(reason == "Model is not installed: text")
+        }
+    }
+
     @Test("S01: chosen text model receives one local structured reasoning stage")
     func chosenTextModel() async throws {
         let runtime = RtRuntime()

@@ -20,23 +20,9 @@ import LocalInferenceBackends
         let output = URL(filePath: options.output)
         guard !FileManager.default.fileExists(atPath: output.path) else { throw PreconProjectError.alreadyExists(output.path) }
         let registry = ModelRegistryDiscovery().discover()
-        let ids = [options.textModelID] + (options.imageModelID.map { [$0] } ?? [])
-        for id in ids {
-            guard let model = registry.model(id: id), FileManager.default.fileExists(atPath: model.localPath.path),
-                  model.health != .failed, model.health != .unavailable else { throw PreconRuntimeError.unavailable("Model is not installed: \(id)") }
-        }
-        guard PreconReadPage.textModels(registry.models).contains(where: { $0.id == options.textModelID }) else {
-            throw PreconRuntimeError.unsupported("Text selection lacks structured reasoning")
-        }
-        if let image = options.imageModelID, !PreconReadPage.imageModels(registry.models).contains(where: { $0.id == image }) {
-            throw PreconRuntimeError.unsupported("Image selection lacks OCR/vision")
-        }
-        var runtimes: [InferenceBackend: any ModelRuntime] = [:]
         let home = FileManager.default.homeDirectoryForCurrentUser
         let resources = root.appending(path: "Sources/MLXMenu/Resources")
-        for id in ids {
-            let model = registry.model(id: id)!
-            if runtimes[model.backend] != nil { continue }
+        let runtimes = try options.runtimes(models: registry.models, fileExists: FileManager.default.fileExists(atPath:)) { model in
             let executable: URL
             var launcher: URL?
             switch model.backend {
@@ -51,7 +37,7 @@ import LocalInferenceBackends
             default: throw PreconRuntimeError.unsupported("Backend is not a text/image runtime")
             }
             guard FileManager.default.isExecutableFile(atPath: executable.path) else { throw PreconRuntimeError.unavailable(executable.path) }
-            runtimes[model.backend] = OpenAIWorkerRuntime(backend: model.backend, executable: executable, launcherScript: launcher,
+            return OpenAIWorkerRuntime(backend: model.backend, executable: executable, launcherScript: launcher,
                 watchdogScript: resources.appending(path: "worker_watchdog.py"),
                 watchdogInterpreter: PythonExecutable.forToolExecutable(executable), basePort: model.backend == .mlxLM ? 18781 : 18881)
         }

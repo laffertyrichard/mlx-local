@@ -184,7 +184,7 @@ Your manual walkthrough (calibrate, trace, save/retry, quit/reopen, incompatible
 | C4-02 | Minor | Crop work ran on the main actor. Fixed in `717758b` |
 | C4-03 | Note | Eval negative controls are exact-match sentinels. Documented |
 | Architect | Material | The runner ignored live memory. Fixed in `a31bd30` with a live vm_stat budget. The pre-check now proceeds when available + idle reclaimable >= estimate |
-| C5-01 | Minor | Qwen3-VL-8B is registered vision-only, so the eval's OCR stage can't use it. The user switched the real run to dots.ocr. Open: the runner preflight should require the capability that is actually used |
+| C5-01 | Minor | Qwen3-VL-8B is registered vision-only, so the eval's OCR stage can't use it. The user switched the real run to dots.ocr. Fixed in Session 7 (`cb4b0a9`, `e506c5e`) |
 
 **Slice design** (`slice-spec.md`):
 - `PreconRuntimeInterpreter` sends one local-only, structured stage to the model the user picked, through the shared `ModelResourceManager`.
@@ -214,6 +214,26 @@ That is one run on five synthetic pages, which shows the integration path works.
 - Same-sign touching polygons.
 - A11.
 
+## Session 7 (2026-11-19): C5-01 closed, OCR page read by a real model
+
+- `cb4b0a9`: runner preflight (`PreconEvaluationOptions.preflight`) refuses an image model without OCR, image input and structured output before any runtime is built.
+- `e506c5e`: the scanned page could never be read, whatever the model. `OpenAIWorkerRuntime` returns OCR as `## Page 1` markdown, and the pipeline decoded it as JSON. `PreconRuntimeInterpreter` now sends OCR with no instruction (the runtime's fixed prompt), strips the page header and builds `{"text","confidence"}` itself. The confidence is the runtime's line-uniqueness/length score, not a model probability. `ocrContract` is part of the profile digest, so units from the old mapping are not reused. The pipeline's `ocrInstruction` is not sent on this path. S08's fake now returns the real artifact shape; it failed before the fix.
+- 136 tests pass at `e506c5e`.
+- dots.ocr-8bit does not read text under mlx-vlm 0.5.0 on this Mac. Probed directly on a scratch image (not the eval set): the standard OCR prompt returns `content: null`; a JSON prompt returns one `Picture` box. That bogus JSON was the "malformed output" of the Oct 26 run. PaddleOCR-VL-1.6-4bit and OvisOCR2-8bit both transcribed the same scratch image correctly.
+- Two real runs at `e506c5e`, text model Qwen3-30B-A3B-Instruct-2507-4bit, reports in `/Users/mccully/projects/mlx-local-evidence/2026-11-19/`. No workers were left running after either.
+
+| Metric | dots.ocr-8bit (`real-eval-report.json`) | PaddleOCR-VL-1.6-4bit (`real-eval-report-paddleocr.json`) |
+|---|---|---|
+| Extraction | 10/21 | 11/21 |
+| Source support | 14/14 | 14/18 (the 4 OCR candidates can't count: no native text) |
+| Coverage | 4/5 pages; the scan deferred (worker returned empty content) | 5/5 pages, 5/5 chunks |
+| Quantity agreement | 2/2 | 2/2 |
+| Absent-item trap | none found | none found |
+
+The scanned page gave 4 candidates (`A105 Room`, `Pine`, `18 ft`, `Finish concrete`), all held for a source-image check as designed. Only `18 ft` matches an expected item exactly. Extraction is still about half; nothing was tuned against this set. Two runs on five synthetic pages show the path works, not accuracy.
+
+Still not done: the native Read Page walkthrough, any vision-crop inference, and the save/retry walkthrough after C1-01. PRs #5 and #4 were merged at the user's direction with those recorded as untested.
+
 ## Next steps (in order)
 
 0. **Open gate: running-app save/retry walkthrough (about 5 minutes, needs a person).** The closeout session couldn't drive the UI (no Accessibility permission). Use a debug build of this branch and a throwaway data root:
@@ -229,7 +249,7 @@ That is one run on five synthetic pages, which shows the integration path works.
 2. Touching same-sign polygons (rooms sharing a wall) need a Boolean polygon engine to decide; until then that pair stays `unavailable`.
 3. Done in Session 6: the runtime adapter, the ResourceManager admission/cancellation wiring, Read Page with candidate review, and the held-out eval set and runner. Remaining before merging `feat/read-page-candidates` (draft PR, not merged):
    - Native walkthrough of Read Page. Select models, read a native-text page, Cancel during a cold load, Accept/Reject, then edit the source and confirm the review shows as stale. Needs a person and a quiet window.
-   - C5-01: require the capability the stage actually uses in runner preflight, and make the OCR prompt work with dots.ocr (or use Apple Vision OCR). Rerun the real eval after that.
+   - Done in Session 7: C5-01. Use PaddleOCR-VL-1.6-4bit or OvisOCR2-8bit for OCR; dots.ocr-8bit returns nothing here.
    - Optional, needs approval: the one-line cancellation check after `ensureLoaded` in `ResourceManager.executeStage`.
 4. Next bounded milestone toward document-set takeoffs: **project-level read across a document set.** Run Read Page over every page of every imported source. Group the reviewed candidates by sheet, room and spec section. Surface conflicts between sources (the same dimension or material stated differently) and unresolved questions as first-class records. Candidates stay candidates: quantities still come only from deterministic measurement, and conflicts are never auto-closed. Exit: a synthetic 2-3 sheet set with a planted plan/schedule conflict and a missing spec item. The conflict and the question must be reported with sources, with zero invented quantities.
 

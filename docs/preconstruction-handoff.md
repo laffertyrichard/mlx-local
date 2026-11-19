@@ -232,11 +232,35 @@ That is one run on five synthetic pages, which shows the integration path works.
 
 The scanned page gave 4 candidates (`A105 Room`, `Pine`, `18 ft`, `Finish concrete`), all held for a source-image check as designed. Only `18 ft` matches an expected item exactly. Extraction is still about half; nothing was tuned against this set. Two runs on five synthetic pages show the path works, not accuracy.
 
-Still not done: the native Read Page walkthrough, any vision-crop inference, and the save/retry walkthrough after C1-01. PRs #5 and #4 were merged at the user's direction with those recorded as untested.
+Still not done: the native Read Page walkthrough, any vision-crop inference, and the save/retry walkthrough after C1-01. PRs #5 and #4 were merged at the user's direction with those recorded as untested. (Superseded for the two walkthroughs: see Session 8.)
+
+## Session 8 (2026-11-19): extraction pass (uncommitted on `feat/extraction-pass`, branched from `main` `21d7547`)
+
+- **Walkthroughs.** The user reports having done both the save/retry and the Read Page walkthroughs and believes both passed. Nothing was captured (see Next steps 0 and 3).
+- **Label convention** (user decision for rooms and materials; the rest is the same rule extended, stated in `Fixtures/precon-eval/README.md`): a candidate's text is the bare value. Room `Cedar` not `Room Cedar`; material `oak` not `Finish oak`; dimension `12 1/2 ft` without `Width`; a note is the whole line verbatim; a sheet is the bare ID.
+- **Evaluation sets.** The old held-out pages had been read item by item, so they were relabelled and moved into a new dev set, `dev.json` (20 pages, 85 items, 3 scans). `expected.json` is a fresh held-out set (`synthetic-held-out-v2`, 5 pages, 22 items), written before any tuning. Both now list table headers and sheet-ID look-alikes (`D104`, `M10`, `R2`) as `absent` traps, because the extraction metric is recall-only.
+- **Sheet IDs are deterministic.** `InterpretationPipeline.sheetIDs(in:)` reads IDs like `A101`, `A-101`, `S2.1`, `A1.01` at the start of a line of page text and adds them as `sheet` candidates with a nil confidence (offered on native text, held on scans). The model is told to skip sheet numbers. Known ceiling: a door or equipment tag alone on a line still matches, and IDs inside a sentence are skipped. Not applied to vision crops.
+- **New default candidate instruction** with per-kind rules and one worked example. A test keeps the example's values out of both fixtures. It reaches the runner and Read Page (both use the default). The same instruction goes to vision crops, which have still never run against a real model.
+- Pipeline version is `precon-interpret-7`; units saved under 6 are not reused.
+- **Real runs**, Qwen3-30B-A3B-Instruct-2507-4bit + PaddleOCR-VL-1.6-4bit, reports and logs in `/Users/mccully/projects/mlx-local-evidence/2026-11-19/`:
+
+| Run | Extraction | Trap items found | Wrong extras | Pages |
+|---|---|---|---|---|
+| Dev, unchanged pipeline (`dev-baseline-1`, `-2`, identical) | 50/85 | 3 | 26 | 20/20 |
+| Dev, after the change (`dev-tune-1`, the only tuning run) | 82/85 | 0 | 3 | 20/20 |
+| Held-out v2, run once (`heldout-v2-final`) | 22/22 | 0 | 1 | 5/5 |
+
+  Dev misses left: a scanned notes page whose two notes came back merged into one candidate, and one status note skipped. The extras are whole lines offered as notes (`Rev R2`, `See detail 4 on A-501`, `Door D212 existing`).
+- **Limits.** Both sets come from the same generator and the same author, with one line per item in an 18 pt font. 22/22 says the instruction and convention work on that layout; it says nothing about real drawings. Held candidates count toward extraction, and scanned-page candidates are all held.
+- **Held-out v2 is now spent.** Its per-case output was read after the run (the `Door D212 existing` extra above), so write fresh held-out pages before any further tuning.
+- **Confidence is not informative under this prompt.** Every model candidate in both runs came back at 0.9, the value in the worked example (earlier runs returned a flat 1), so the 0.6 low-confidence hold never fires. Left as is, because changing the prompt would invalidate the held-out run.
+- Deterministic sheet candidates are the first *offered* candidates with a nil confidence. Read Page's row code prints `Confidence: unknown` for nil; not looked at in the running app.
+- The run logs record a diff hash taken before the handoff and README edits; Sources and the fixture JSON did not change after the runs.
+- 139 tests pass.
 
 ## Next steps (in order)
 
-0. **Open gate: running-app save/retry walkthrough (about 5 minutes, needs a person).** The closeout session couldn't drive the UI (no Accessibility permission). Use a debug build of this branch and a throwaway data root:
+0. **Save/retry walkthrough: the user reported on 2026-11-19 that they had done it** and believe it passed (Session 6 also records a manual walkthrough as user-tested). No run date, build SHA or log was recorded, so it is user-reported evidence, not a captured result. The steps are kept for reruns. Original text: the closeout session couldn't drive the UI (no Accessibility permission). Use a debug build of this branch and a throwaway data root:
    1. `PRECONSTRUCTION_WORKSPACE=<empty dir> PRECONSTRUCTION_TEST_FAIL_SAVE=revisions,checkpoints "$(swift build --show-bin-path)/MLXMenu"`. The seam is compiled into debug builds only. It fails the first write into `revisions/`, then the first write into `checkpoints/`, once each.
    2. Open Takeoff, create project `Walk`, and import `Preconstruction/fixtures/synthetic-plan.pdf`. Cal X: 12 ft from (100,300) to (316,300). Cal Y: 10 ft from (110,200) to (110,380). Trace area 100,200 / 316,200 / 316,380 / 100,380. The panel should show 120 SF.
    3. Click Save. Expect "Injected test failure before writing revisions/R1.json". `measurements/` holds R1 files; `revisions/` and `checkpoints/` hold none.
@@ -247,8 +271,8 @@ Still not done: the native Read Page walkthrough, any vision-crop inference, and
    8. A11 refusal check: on the same page, choose Cal X, enter 6 ft and click the same two points. Expect the "traced at 18.000 pt/ft ... not supported (A11)" message, with the area unchanged.
 1. Done: `build-package.sh` built `dist/MLX-Menu-3.1.1.5.pkg` (unsigned) and `verify-package.sh` passed with the template allowlist. The app extracted from the pkg, launched from cwd `/`, created a project identical to its bundled template. Not installed; installing needs admin rights.
 2. Touching same-sign polygons (rooms sharing a wall) need a Boolean polygon engine to decide; until then that pair stays `unavailable`.
-3. Done in Session 6: the runtime adapter, the ResourceManager admission/cancellation wiring, Read Page with candidate review, and the held-out eval set and runner. Remaining before merging `feat/read-page-candidates` (draft PR, not merged):
-   - Native walkthrough of Read Page. Select models, read a native-text page, Cancel during a cold load, Accept/Reject, then edit the source and confirm the review shows as stale. Needs a person and a quiet window.
+3. Done in Session 6: the runtime adapter, the ResourceManager admission/cancellation wiring, Read Page with candidate review, and the held-out eval set and runner. PR #5 is merged. Status of what was listed as remaining:
+   - Read Page walkthrough: the user reported on 2026-11-19 that they had done it and believe it passed; no run date, build SHA or log. It is not known whether it was run after `e506c5e`, so reading a scanned page in the app with a working OCR model (PaddleOCR-VL or OvisOCR2) may still be unwalked.
    - Done in Session 7: C5-01. Use PaddleOCR-VL-1.6-4bit or OvisOCR2-8bit for OCR; dots.ocr-8bit returns nothing here.
    - Optional, needs approval: the one-line cancellation check after `ensureLoaded` in `ResourceManager.executeStage`.
 4. Next bounded milestone toward document-set takeoffs: **project-level read across a document set.** Run Read Page over every page of every imported source. Group the reviewed candidates by sheet, room and spec section. Surface conflicts between sources (the same dimension or material stated differently) and unresolved questions as first-class records. Candidates stay candidates: quantities still come only from deterministic measurement, and conflicts are never auto-closed. Exit: a synthetic 2-3 sheet set with a planted plan/schedule conflict and a missing spec item. The conflict and the question must be reported with sources, with zero invented quantities.

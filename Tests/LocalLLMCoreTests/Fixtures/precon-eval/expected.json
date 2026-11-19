@@ -1,104 +1,109 @@
 {
-  "label": "synthetic-held-out-v1",
+  "label": "synthetic-held-out-v2",
   "cases": [
     {
-      "id": "fraction",
+      "id": "mixed",
       "raster": false,
       "lines": [
-        "A101",
-        "Room Cedar",
-        "Width 12 1/2 ft",
-        "Finish oak"
+        "A-201",
+        "Room Juniper",
+        "Length 14 3/4 ft",
+        "Floor terrazzo"
       ],
       "expected": [
-        "A101",
-        "Room Cedar",
-        "12 1/2 ft",
-        "oak"
+        "A-201",
+        "Juniper",
+        "14 3/4 ft",
+        "terrazzo"
       ],
       "absent": [
-        "marble"
+        "limestone"
       ],
-      "widthFeet": 12.5,
+      "widthFeet": 14.75,
       "heightFeet": 8,
-      "areaSF": 100
+      "areaSF": 118
     },
     {
-      "id": "exclusion",
+      "id": "nic",
       "raster": false,
       "lines": [
-        "A102",
-        "Room Birch",
-        "EXCLUDE painting existing walls"
+        "S2.1",
+        "Room Alder",
+        "N.I.C. owner furnished appliances",
+        "Door D212 existing"
       ],
       "expected": [
-        "A102",
-        "Room Birch",
-        "EXCLUDE painting existing walls"
+        "S2.1",
+        "Alder",
+        "N.I.C. owner furnished appliances"
       ],
       "absent": [
-        "Paint all walls"
-      ]
-    },
-    {
-      "id": "no-quantity",
-      "raster": false,
-      "lines": [
-        "A103",
-        "Concept only - NOT FOR QUANTITY TAKEOFF",
-        "Verify all dimensions in field"
-      ],
-      "expected": [
-        "A103",
-        "Concept only - NOT FOR QUANTITY TAKEOFF",
-        "Verify all dimensions in field"
-      ],
-      "absent": [
-        "200 SF"
+        "D212"
       ]
     },
     {
       "id": "schedule",
       "raster": false,
       "lines": [
-        "A104 FINISH SCHEDULE",
-        "ROOM | FLOOR | WALL",
-        "Maple | tile | plaster",
-        "Ash | cork | brick"
+        "A-601 ROOM FINISH SCHEDULE",
+        "SPACE | BASE | CEILING",
+        "Hazel | rubber | gypsum",
+        "Rowan | vinyl | acoustic tile"
       ],
       "expected": [
-        "A104",
-        "Maple",
-        "tile",
-        "plaster",
-        "Ash",
-        "cork",
-        "brick"
+        "A-601",
+        "Hazel",
+        "rubber",
+        "gypsum",
+        "Rowan",
+        "vinyl",
+        "acoustic tile"
       ],
       "absent": [
-        "carpet"
+        "SPACE",
+        "BASE",
+        "CEILING"
       ],
-      "widthFeet": 10,
+      "widthFeet": 11,
       "heightFeet": 9,
-      "areaSF": 90
+      "areaSF": 99
+    },
+    {
+      "id": "notes",
+      "raster": false,
+      "lines": [
+        "G-002",
+        "FOR REFERENCE ONLY - DO NOT SCALE",
+        "Contractor to confirm ceiling heights on site",
+        "EXCLUDE asbestos abatement"
+      ],
+      "expected": [
+        "G-002",
+        "FOR REFERENCE ONLY - DO NOT SCALE",
+        "Contractor to confirm ceiling heights on site",
+        "EXCLUDE asbestos abatement"
+      ],
+      "absent": [
+        "300 SF"
+      ]
     },
     {
       "id": "scan",
       "raster": true,
       "lines": [
-        "A105",
-        "Room Pine",
-        "18 ft",
-        "Finish concrete"
+        "M-101",
+        "Room Larch",
+        "22 ft 6 in",
+        "Wall glass block"
       ],
       "expected": [
-        "A105",
-        "Room Pine",
-        "18 ft",
-        "concrete"
+        "M-101",
+        "Larch",
+        "22 ft 6 in",
+        "glass block"
       ],
       "absent": [
-        "granite"
+        "sandstone"
       ]
     }
   ]

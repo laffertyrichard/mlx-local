@@ -87,17 +87,10 @@ public enum Takeoff {
             positives.contains { $0.zone == hole.zone && contains(outer: $0.pts, inner: hole.pts) }
                 ? nil : "\(hole.id) is not contained by a gross polygon in zone \(hole.zone)"
         }
-        // `contains` can't tell a polygon on a concave boundary from one outside it, so only strict containment passes.
-        let strictlyInside = { (inner: AreaPlane.Polygon, outers: [AreaPlane.Polygon]) in
-            outers.contains { $0.zone == inner.zone && contains(outer: $0.pts, inner: inner.pts) && !touches($0.pts, inner.pts) }
-        }
-        var undecided = deductions.filter { hole in !failures.contains { $0.hasPrefix("\(hole.id) ") } && !strictlyInside(hole, positives) }
-            .map { "\($0.id) touches its gross boundary; containment is unchecked" }
         // Ownership rule: a positive polygon inside a deduction of its zone is an add-back restoring that region, so
         // its overlap with the gross polygon around it is intended. Any other same-sign overlap double counts, and
-        // overlapping deductions have no ownership rule, so both fail.
+        // overlapping deductions have no ownership rule, so both fail. Polygons that only touch share no area.
         let addBacks = positives.filter { p in deductions.contains { $0.zone == p.zone && contains(outer: $0.pts, inner: p.pts) } }
-        undecided += addBacks.filter { !strictlyInside($0, deductions) }.map { "\($0.id) touches its deduction boundary; containment is unchecked" }
         for group in [positives, deductions] {
             for (i, a) in group.enumerated() {
                 for b in group.dropFirst(i + 1) {
@@ -106,40 +99,40 @@ public enum Takeoff {
                     // Only an add-back's overlap with the gross polygon around it is intended; two add-backs never overlap.
                     if let addBack = pair.first(where: isAddBack), let other = pair.first(where: { $0.id != addBack.id }),
                        !isAddBack(other), contains(outer: other.pts, inner: addBack.pts) { continue }
-                    switch relation(a.pts, b.pts) {
-                    case .overlap: failures.append("\(pair[0].id) overlaps \(pair[1].id)")
-                    case .touching: undecided.append("\(pair[0].id) touches \(pair[1].id); shared-boundary overlap is unchecked")
-                    case .disjoint: break
-                    }
+                    if overlaps(a.pts, b.pts) { failures.append("\(pair[0].id) overlaps \(pair[1].id)") }
                 }
             }
         }
-        let topology: CheckStatus = !failures.isEmpty ? .failed : !undecided.isEmpty ? .unavailable : .passed
-        return AreaTakeoff(gross: gross, deductions: deducted, topology: topology, topologyNotes: failures + undecided)
+        let topology: CheckStatus = failures.isEmpty ? .passed : .failed
+        return AreaTakeoff(gross: gross, deductions: deducted, topology: topology, topologyNotes: failures)
     }
 
-    private enum Relation { case disjoint, touching, overlap }
-
-    /// Any vertex of one polygon on an edge of the other.
-    private static func touches(_ a: [[Double]], _ b: [[Double]]) -> Bool {
-        let edgesA = zip(a, a.dropFirst() + [a[0]]), edgesB = zip(b, b.dropFirst() + [b[0]])
-        return a.contains { p in edgesB.contains { onSegment($0.0, $0.1, p) } } || b.contains { p in edgesA.contains { onSegment($0.0, $0.1, p) } }
-    }
-
-    /// Two simple polygons with no proper crossing and no vertex inside or on the other are disjoint (containment
-    /// would put a vertex strictly inside). Any shared boundary point is reported, not guessed.
-    // ponytail: touching pairs (rooms sharing a wall) stay unavailable; a Boolean polygon engine is the upgrade path.
-    private static func relation(_ a: [[Double]], _ b: [[Double]]) -> Relation {
-        if Set(a) == Set(b) { return .overlap } // the same outline traced twice
+    /// Where the boundary of simple polygon `a` runs relative to simple polygon `b`; nil when their edges properly cross.
+    /// Each edge of `a` is cut at every vertex of `b` lying on it. With no proper crossing, a piece then lies wholly
+    /// along one edge of `b` (both ends on it), wholly inside or wholly outside, so one midpoint test per piece decides
+    /// it. That settles touching, overlap and containment without a Boolean polygon engine.
+    // ponytail: exact float comparisons, like the rest of this file. A skew shared wall whose vertices don't coincide
+    // may not be seen as collinear and can report a false overlap; use exact rationals if real traces hit that.
+    private static func boundary(of a: [[Double]], against b: [[Double]]) -> (inside: Bool, outside: Bool)? {
         let edgesA = Array(zip(a, a.dropFirst() + [a[0]])), edgesB = Array(zip(b, b.dropFirst() + [b[0]]))
-        if edgesA.contains(where: { e in edgesB.contains { properlyCross(e.0, e.1, $0.0, $0.1) } }) { return .overlap }
-        var touching = false
-        for (points, poly, edges) in [(a, b, edgesB), (b, a, edgesA)] {
-            for p in points {
-                if edges.contains(where: { onSegment($0.0, $0.1, p) }) { touching = true } else if windingContains(poly, p) { return .overlap }
+        if edgesA.contains(where: { e in edgesB.contains { properlyCross(e.0, e.1, $0.0, $0.1) } }) { return nil }
+        var inside = false, outside = false
+        for (p, q) in edgesA {
+            let cuts = b.filter { onSegment(p, q, $0) }.sorted { hypot($0[0] - p[0], $0[1] - p[1]) < hypot($1[0] - p[0], $1[1] - p[1]) }
+            let points = [p] + cuts + [q]
+            for (u, v) in zip(points, points.dropFirst()) where u != v {
+                if edgesB.contains(where: { onSegment($0.0, $0.1, u) && onSegment($0.0, $0.1, v) }) { continue }
+                if windingContains(b, [(u[0] + v[0]) / 2, (u[1] + v[1]) / 2]) { inside = true } else { outside = true }
             }
         }
-        return touching ? .touching : .disjoint
+        return (inside, outside)
+    }
+
+    /// True when two simple polygons share area. A boundary piece of one inside the other, or two boundaries that
+    /// coincide everywhere (the same region traced twice), means shared area; touching along walls or corners does not.
+    private static func overlaps(_ a: [[Double]], _ b: [[Double]]) -> Bool {
+        guard let ab = boundary(of: a, against: b), let ba = boundary(of: b, against: a) else { return true }
+        return ab.inside || ba.inside || (!ab.outside && !ba.outside)
     }
 
     /// Open routes never get an automatic closing segment.
@@ -197,15 +190,9 @@ public enum Takeoff {
         properlyCross(a, b, c, d) || onSegment(a, b, c) || onSegment(a, b, d) || onSegment(c, d, a) || onSegment(c, d, b)
     }
 
-    /// Inner vertices inside or on the outer boundary, and no proper edge crossings.
-    // ponytail: misses a hole bridging a concave notch via collinear edges only; Boolean engine is the upgrade path
+    /// True when no part of the inner boundary lies outside the outer polygon; touching the outer boundary is allowed.
     private static func contains(outer: [[Double]], inner: [[Double]]) -> Bool {
-        let outerEdges = zip(outer, outer.dropFirst() + [outer[0]])
-        let innerEdges = zip(inner, inner.dropFirst() + [inner[0]])
-        let crosses = innerEdges.contains { e in outerEdges.contains { properlyCross(e.0, e.1, $0.0, $0.1) } }
-        return !crosses && inner.allSatisfy { p in
-            outerEdges.contains { onSegment($0.0, $0.1, p) } || windingContains(outer, p)
-        }
+        boundary(of: inner, against: outer).map { !$0.outside } ?? false
     }
 
     private static func windingContains(_ poly: [[Double]], _ p: [Double]) -> Bool {

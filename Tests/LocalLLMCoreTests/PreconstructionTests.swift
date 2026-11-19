@@ -759,7 +759,82 @@ struct PreconstructionCorrectiveTests {
         #expect(revision.provisionalTotal(.EA) == 2, "same position and look, different physical IDs")
     }
 
-    @Test("F12/A08: same-sign overlaps fail, add-backs inside a deduction restore area, touching stays unavailable")
+    @Test("shared walls: a second room that only touches the first passes; any shared area fails", arguments: [
+        ("full shared wall", [[316.0, 200], [406, 200], [406, 380], [316, 380]], true),
+        ("partial wall, T junction", [[316, 250], [400, 250], [400, 300], [316, 300]], true),
+        ("corner only", [[316, 380], [400, 380], [400, 450], [316, 450]], true),
+        ("L wrapping two walls", [[316, 200], [400, 200], [400, 450], [100, 450], [100, 380], [316, 380]], true),
+        ("apart", [[320, 200], [400, 200], [400, 380], [320, 380]], true),
+        ("inside, sharing a wall", [[216, 250], [316, 250], [316, 300], [216, 300]], false),
+        ("inscribed diamond, every vertex on an edge", [[208, 200], [316, 290], [208, 380], [100, 290]], false),
+        ("same outline with an extra vertex", [[100, 200], [208, 200], [316, 200], [316, 380], [100, 380]], false),
+        ("strip overlapping along the wall", [[300, 200], [406, 200], [406, 380], [300, 380]], false),
+    ])
+    func sharedWalls(_ c: (name: String, pts: [[Double]], passes: Bool)) throws {
+        let gross = room("G01", 1, 100, 200, 216, 180)
+        let result = try Takeoff.area(try plane([gross, .init(id: "G02", zone: "Z01", sign: 1, pts: c.pts)]))
+        #expect(result.topology == (c.passes ? .passed : .failed), "\(c.name): \(result.topologyNotes)")
+        #expect(result.topologyNotes == (c.passes ? [] : ["G01 overlaps G02"]))
+    }
+
+    @Test("shared walls on a diagonal: touching along a skew edge passes, a vertex past it fails",
+          arguments: [([[10.0, 0], [10, 10], [0, 10]], true), ([[10, 0], [10, 10], [5, 5]], true), ([[10, 0], [10, 10], [4, 4]], false)])
+    func skewSharedWall(pts: [[Double]], passes: Bool) throws {
+        var plane = try plane([.init(id: "G01", zone: "Z01", sign: 1, pts: [[0, 0], [10, 0], [0, 10]]),
+                               .init(id: "G02", zone: "Z01", sign: 1, pts: pts)])
+        plane.scale = 1
+        #expect(try Takeoff.area(plane).topology == (passes ? .passed : .failed))
+    }
+
+    @Test("deductions and add-backs may touch a boundary; containment is still exact")
+    func boundaryContainment() throws {
+        let gross = room("G01", 1, 100, 200, 216, 180), island = room("D01", -1, 154, 254, 36, 54)
+        let againstWall = try Takeoff.area(try plane([gross, room("D01", -1, 100, 254, 36, 54)]))
+        #expect(againstWall.topology == .passed && againstWall.net == 114)
+        #expect(try Takeoff.area(try plane([gross, island, room("D02", -1, 190, 254, 36, 54)])).topology == .passed, "deductions sharing an edge")
+        let addBack = try Takeoff.area(try plane([gross, island, room("A01", 1, 154, 254, 18, 18)]))
+        #expect(addBack.topology == .passed && addBack.net == 115, "add-back in the deduction's corner")
+        var notch = try plane([.init(id: "G01", zone: "Z01", sign: 1, pts: [[0, 0], [10, 0], [10, 10], [7, 10], [7, 3], [3, 3], [3, 10], [0, 10]]),
+                               .init(id: "D01", zone: "Z01", sign: -1, pts: [[3, 3], [7, 3], [7, 10], [3, 10]])])
+        notch.scale = 1
+        #expect(try Takeoff.area(notch).topology == .failed, "the deduction fills the notch: every vertex is a gross vertex, yet it lies outside")
+    }
+
+    @Test("overlap and containment agree with counting grid cells on 600 random rectangle and L-shape pairs")
+    func topologyMatchesGridCells() throws {
+        var state: UInt64 = 0x5EED
+        func next(_ n: Int) -> Int { state = state &* 6364136223846793005 &+ 1442695040888963407; return Int((state >> 33) % UInt64(n)) }
+        func shape() -> [[Double]] {
+            let w = 2 + next(4), h = 2 + next(4), x = next(9 - w), y = next(9 - h)
+            var pts = [[0, 0], [w, 0], [w, h], [0, h]]
+            if next(2) == 0 { let cw = 1 + next(w - 1), ch = 1 + next(h - 1); pts = [[0, 0], [w, 0], [w, h - ch], [w - cw, h - ch], [w - cw, h], [0, h]] }
+            let flipX = next(2) == 0, flipY = next(2) == 0
+            return pts.map { [Double(x + (flipX ? w - $0[0] : $0[0])), Double(y + (flipY ? h - $0[1] : $0[1]))] }
+        }
+        func cells(_ poly: [[Double]]) -> Set<Int> {
+            Set((0..<81).filter { cell in
+                let p = [Double(cell % 9) + 0.5, Double(cell / 9) + 0.5]
+                return zip(poly, poly.dropFirst() + [poly[0]]).filter { a, b in
+                    (a[1] > p[1]) != (b[1] > p[1]) && p[0] < (b[0] - a[0]) * (p[1] - a[1]) / (b[1] - a[1]) + a[0]
+                }.count % 2 == 1
+            })
+        }
+        var template = try plane([]); template.scale = 1
+        var seen = (touching: 0, overlapping: 0, contained: 0)
+        for _ in 0..<600 {
+            let a = shape(), b = shape(), cellsA = cells(a), cellsB = cells(b)
+            template.polys = [.init(id: "G01", zone: "Z01", sign: 1, pts: a), .init(id: "G02", zone: "Z01", sign: 1, pts: b)]
+            let overlap = !cellsA.isDisjoint(with: cellsB)
+            #expect((try Takeoff.area(template).topology == .failed) == overlap, "overlap \(a) \(b)")
+            template.polys[1] = .init(id: "D01", zone: "Z01", sign: -1, pts: b)
+            #expect((try Takeoff.area(template).topology == .passed) == cellsB.isSubset(of: cellsA), "containment \(a) \(b)")
+            if overlap { seen.overlapping += 1 } else { seen.touching += 1 }
+            if cellsB.isSubset(of: cellsA) { seen.contained += 1 }
+        }
+        #expect(seen.touching > 50 && seen.overlapping > 50 && seen.contained > 10, "the sample must exercise every outcome: \(seen)")
+    }
+
+    @Test("F12/A08: same-sign overlaps fail, add-backs inside a deduction restore area, adjacent rooms pass")
     func overlapAndAddBack() throws {
         let gross = room("G01", 1, 100, 200, 216, 180), island = room("D01", -1, 154, 254, 36, 54)
         let crossing = try Takeoff.area(try plane([gross, room("G02", 1, 280, 300, 100, 100), island]))
@@ -773,7 +848,7 @@ struct PreconstructionCorrectiveTests {
         #expect(addBack.topology == .passed)
         #expect(addBack.net == 120 - 6 + 1)
         let adjacent = try Takeoff.area(try plane([gross, room("G02", 1, 316, 200, 90, 180)]))
-        #expect(adjacent.topology == .unavailable && adjacent.topologyNotes == ["G01 touches G02; shared-boundary overlap is unchecked"])
+        #expect(adjacent.topology == .passed && adjacent.topologyNotes.isEmpty)
     }
 
     @Test("N01/N03 (Codex review): duplicate add-backs and a deduction in a concave notch are never passed")
@@ -786,7 +861,7 @@ struct PreconstructionCorrectiveTests {
         plane.polys = [.init(id: "G01", zone: "Z01", sign: 1, pts: [[0, 0], [10, 0], [10, 10], [7, 10], [7, 3], [3, 3], [3, 10], [0, 10]]),
                        room("D01", -1, 3, 5, 4, 2)]
         let notch = try Takeoff.area(plane)
-        #expect(notch.topology != .passed, "every deduction vertex sits on the gross boundary; containment is undecided")
+        #expect(notch.topology == .failed, "every deduction vertex sits on the gross boundary, but the deduction is in the notch, outside the room")
     }
 
     @Test("N02 (Codex review): quotes keep dimension punctuation and candidate words keep their order")

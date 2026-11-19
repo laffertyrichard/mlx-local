@@ -1,0 +1,4 @@
+interface:
+  display_name: "Building Code Review"
+  short_description: "Research adopted codes and project applicability"
+  default_prompt: "Use $building-code-review to establish the jurisdiction and adopted code basis for this remodel."

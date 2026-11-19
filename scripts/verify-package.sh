@@ -95,6 +95,15 @@ Contents/Resources/capabilities.json
 Contents/Resources/local-results.json
 Contents/Resources/mlx_server_no_mpi.py
 Contents/Resources/model-profiles.json
+Contents/Resources/preconstruction-template/README.md
+Contents/Resources/preconstruction-template/checkpoints/checkpoint-template.md
+Contents/Resources/preconstruction-template/measurements/project-manifest.json
+Contents/Resources/preconstruction-template/registers/callouts.csv
+Contents/Resources/preconstruction-template/registers/coverage.csv
+Contents/Resources/preconstruction-template/registers/questions.csv
+Contents/Resources/preconstruction-template/registers/sources.csv
+Contents/Resources/preconstruction-template/registers/unfinished-measurements.csv
+Contents/Resources/preconstruction-template/registers/validation.csv
 Contents/Resources/worker_watchdog.py
 Contents/_CodeSignature/CodeResources
 FILES

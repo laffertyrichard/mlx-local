@@ -1,0 +1,4 @@
+interface:
+  display_name: "Cabinetry and Built-ins"
+  short_description: "Design usable cabinets and fabrication handoffs"
+  default_prompt: "Use $cabinetry-and-builtins to review this cabinet concept for appearance, operation, support and fabrication readiness."

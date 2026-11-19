@@ -1,0 +1,9 @@
+{
+  "baseline_source_files_checked": 145,
+  "changed_files": [],
+  "mlx_git_status_unchanged": true,
+  "source_manifest_originals_checked": 75,
+  "source_manifest_original_hash_mismatches": [],
+  "private_content_tripwire_hits": [],
+  "scope": "read-only hash comparison of inspected source files; no whole-customer-tree scan needed"
+}

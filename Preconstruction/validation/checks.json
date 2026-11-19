@@ -1,0 +1,15 @@
+{
+  "scope": "staged package validation only",
+  "date": "2026-10-19",
+  "suites": [
+    {"command": "PYTHONDONTWRITEBYTECODE=1 python3 tests/test_contracts.py", "run": 10, "passed": 10, "skipped": 0, "exit_code": 0},
+    {"command": "PYTHONDONTWRITEBYTECODE=1 python3 skills/plan-area-takeoff/scripts/test_geometry.py", "run": 10, "passed": 10, "skipped": 0, "exit_code": 0},
+    {"command": "PYTHONDONTWRITEBYTECODE=1 <existing-anaconda-python> skills/plan-area-takeoff/scripts/test_cad.py", "run": 20, "passed": 19, "skipped": 1, "skip_reason": "opt-in actual ODA/DWG round-trip not enabled", "exit_code": 0},
+    {"command": "PYTHONDONTWRITEBYTECODE=1 <existing-anaconda-python> tests/test_optional_checks.py", "run": 5, "passed": 5, "skipped": 0, "exit_code": 0}
+  ],
+  "application_acceptance_status": "planned; not executed",
+  "model_inference_performed": false,
+  "installs_performed": false,
+  "cloud_fallback_used": false,
+  "customer_fixture_files_included": false
+}

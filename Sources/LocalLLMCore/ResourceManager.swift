@@ -170,6 +170,38 @@ public enum ResourceError: LocalizedError {
     }
 }
 
+/// Approximate free/reclaimable bytes from OS counters, not a measurement of per-model headroom.
+/// Nil availability means observation failed; resident estimates are not subtracted from these counters.
+public struct MemoryObservation: Sendable {
+    public var availableBytes: Int64?
+    public var physicalBytes: Int64
+
+    public init(availableBytes: Int64?, physicalBytes: Int64) {
+        self.availableBytes = availableBytes; self.physicalBytes = physicalBytes
+    }
+
+    /// Parses vm_stat text without starting a process.
+    public static func availableBytes(fromVMStat text: String) -> Int64? {
+        let pageSize: Int64 = text.split(separator: "\n").first.flatMap { line in
+            line.split(whereSeparator: { !$0.isNumber }).compactMap { Int64($0) }.last
+        } ?? 16_384
+        // Purgeability overlaps page queues; vm_stat text reports free and speculative separately.
+        let labels = ["Pages free", "Pages inactive", "Pages speculative"]
+        var pages: Int64 = 0
+        var observedLabels = Set<String>()
+        for line in text.split(separator: "\n") {
+            guard let label = labels.first(where: { line.hasPrefix($0 + ":") }),
+                  let value = line.split(whereSeparator: { !$0.isNumber }).compactMap({ Int64($0) }).last else { continue }
+            pages += value; observedLabels.insert(label)
+        }
+        return observedLabels.count == labels.count ? pages * pageSize : nil
+    }
+
+    // ponytail: retain the 20% live reserve and separate 72% estimated-commitment ceiling.
+    public var commitmentCapBytes: Int64 { Int64(Double(physicalBytes) * 0.72) }
+    public var usableBytes: Int64? { availableBytes.map { Int64(Double($0) * 0.80) } }
+}
+
 public actor ModelResourceManager {
     private struct Residency { var lastUsed: Date; var activeRequests: Int }
     private var registry: ModelRegistry
@@ -178,17 +210,42 @@ public actor ModelResourceManager {
     private var loading: [String: Task<Void, Error>] = [:]
     private var reservedMemory: [String: Int64] = [:]
     public let memoryBudgetBytes: Int64
+    private let budgetProvider: (@Sendable () -> MemoryObservation)?
     public var stageTimeout: Duration
 
     public init(registry: ModelRegistry, runtimes: [InferenceBackend: any ModelRuntime], memoryBudgetBytes: Int64,
-                stageTimeout: Duration = .seconds(600)) {
-        self.registry = registry; self.runtimes = runtimes; self.memoryBudgetBytes = memoryBudgetBytes; self.stageTimeout = stageTimeout
+                stageTimeout: Duration = .seconds(600), budgetProvider: (@Sendable () -> MemoryObservation)? = nil) {
+        self.registry = registry; self.runtimes = runtimes; self.memoryBudgetBytes = memoryBudgetBytes
+        self.budgetProvider = budgetProvider; self.stageTimeout = stageTimeout
+    }
+
+    /// Uncommitted budget ceiling, not headroom; use snapshot for capacity remaining after commitments.
+    public func currentBudgetBytes() -> Int64 {
+        guard let observation = budgetProvider?() else { return memoryBudgetBytes }
+        return min(observation.usableBytes ?? observation.commitmentCapBytes, observation.commitmentCapBytes)
+    }
+
+    /// Do not subtract resident estimates from approximate OS availability A.
+    /// Registry peak estimates (size * 1.15 / benchmark peak * 1.15), not measured current peaks,
+    /// reserve incoming/in-flight demand; resident estimates belong only in the commitment cap.
+    /// Full in-flight reservations may also count partial allocations already reflected in A until
+    /// load returns. Active-model KV growth after admission is not attributed; the 20% reserve is
+    /// only a heuristic cushion. No real-model memory evaluation has validated this admission policy.
+    /// Missing A uses the estimate cap alone.
+    private func admissionHeadroom() -> Int64 {
+        let inFlight = reservedMemory.values.reduce(0, +)
+        let committed = residentMemory() + inFlight
+        guard let observation = budgetProvider?() else { return memoryBudgetBytes - committed }
+        let capRemaining = observation.commitmentCapBytes - committed
+        guard let usable = observation.usableBytes else { return capRemaining }
+        return min(usable - inFlight, capRemaining)
     }
 
     public func snapshot(totalMemoryBytes: Int64) -> MachineResources {
-        let used = resident.keys.compactMap { registry.model(id: $0)?.approximateMemoryBytes }.reduce(0, +) + reservedMemory.values.reduce(0, +)
+        // Routing hint only: estimates of what eviction might free, not observed availability.
+        // Admission never adds this hint to A; it re-observes after each eviction instead.
         let reclaimable = resident.compactMap { id, state in state.activeRequests == 0 ? registry.model(id: id)?.approximateMemoryBytes : nil }.reduce(0, +)
-        return MachineResources(totalMemoryBytes: totalMemoryBytes, availableMemoryBytes: max(0, memoryBudgetBytes - used),
+        return MachineResources(totalMemoryBytes: totalMemoryBytes, availableMemoryBytes: max(0, admissionHeadroom()),
                                 loadedModelIDs: Set(resident.keys), reclaimableMemoryBytes: reclaimable)
     }
 
@@ -376,21 +433,23 @@ public actor ModelResourceManager {
         throw ResourceError.allFallbacksFailed(stage: stage.kind, errors: errors)
     }
 
-    private func ensureLoaded(_ model: RegisteredModel, runtime: any ModelRuntime,
+    func ensureLoaded(_ model: RegisteredModel, runtime: any ModelRuntime,
                               onEvent: (@Sendable (PipelineEvent) async -> Void)?) async throws -> (milliseconds: Double, cacheHit: Bool) {
-        if resident[model.id] != nil { resident[model.id]?.lastUsed = Date(); return (0, true) }
-        if let inFlight = loading[model.id] {
-            let waitStarted = Date()
-            try await inFlight.value
-            if resident[model.id] == nil {
-                resident[model.id] = Residency(lastUsed: Date(), activeRequests: 0)
-                var loadedModel = model; loadedModel.loadedState = .loaded; loadedModel.health = .healthy; registry.upsert(loadedModel)
-                reservedMemory.removeValue(forKey: model.id); loading.removeValue(forKey: model.id)
-                await onEvent?(.modelLoaded(model.id, milliseconds: 0))
+        while true {
+            // Eviction suspends the actor: another caller may have loaded or reserved this ID.
+            if resident[model.id] != nil { resident[model.id]?.lastUsed = Date(); return (0, true) }
+            if let inFlight = loading[model.id] {
+                let waitStarted = Date()
+                try await inFlight.value
+                if resident[model.id] == nil {
+                    resident[model.id] = Residency(lastUsed: Date(), activeRequests: 0)
+                    var loadedModel = model; loadedModel.loadedState = .loaded; loadedModel.health = .healthy; registry.upsert(loadedModel)
+                    reservedMemory.removeValue(forKey: model.id); loading.removeValue(forKey: model.id)
+                    await onEvent?(.modelLoaded(model.id, milliseconds: 0))
+                }
+                return (Date().timeIntervalSince(waitStarted) * 1000, false)
             }
-            return (Date().timeIntervalSince(waitStarted) * 1000, false)
-        }
-        while residentMemory() + reservedMemory.values.reduce(0, +) + model.approximateMemoryBytes > memoryBudgetBytes {
+            if model.approximateMemoryBytes <= admissionHeadroom() { break }
             guard let victim = resident.filter({ $0.value.activeRequests == 0 }).min(by: { $0.value.lastUsed < $1.value.lastUsed })?.key else {
                 throw ResourceError.memoryBudgetExceeded(modelID: model.id)
             }
@@ -403,12 +462,13 @@ public actor ModelResourceManager {
         loading[model.id] = task
         do {
             try await task.value
+            // Transfer the reservation to residency before a callback can re-enter admission or snapshot.
+            loading.removeValue(forKey: model.id); reservedMemory.removeValue(forKey: model.id)
             if resident[model.id] == nil {
                 resident[model.id] = Residency(lastUsed: Date(), activeRequests: 0)
                 var loadedModel = model; loadedModel.loadedState = .loaded; loadedModel.health = .healthy; registry.upsert(loadedModel)
                 await onEvent?(.modelLoaded(model.id, milliseconds: Date().timeIntervalSince(start) * 1000))
             }
-            loading.removeValue(forKey: model.id); reservedMemory.removeValue(forKey: model.id)
             return (Date().timeIntervalSince(start) * 1000, false)
         } catch {
             loading.removeValue(forKey: model.id); reservedMemory.removeValue(forKey: model.id)

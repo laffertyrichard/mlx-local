@@ -1,0 +1,15 @@
+interface:
+  display_name: Building Plan and Scope Takeoff
+  short_description: Scope-matched PDF, DXF and DWG takeoffs with overlays
+  default_prompt: Use $plan-area-takeoff to inspect the supplied PDF, DXF or DWG plans,
+    cross-reference scope and design documents, and produce verified quantities, matching
+    overlays and clarification questions.
+  icon_small: assets/icon.svg
+  icon_large: assets/icon.svg
+policy:
+  products:
+  - chatgpt
+  - codex
+  - api
+  - atlas
+  allow_implicit_invocation: true

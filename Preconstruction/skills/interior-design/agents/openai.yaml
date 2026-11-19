@@ -1,0 +1,4 @@
+interface:
+  display_name: "Interior Design"
+  short_description: "Plan usable interiors, finishes and lighting"
+  default_prompt: "Use $interior-design to review this room layout and recommend practical alternatives."

@@ -1,0 +1,105 @@
+{
+  "label": "synthetic-held-out-v1",
+  "cases": [
+    {
+      "id": "fraction",
+      "raster": false,
+      "lines": [
+        "A101",
+        "Room Cedar",
+        "Width 12 1/2 ft",
+        "Finish oak"
+      ],
+      "expected": [
+        "A101",
+        "Room Cedar",
+        "12 1/2 ft",
+        "oak"
+      ],
+      "absent": [
+        "marble"
+      ],
+      "widthFeet": 12.5,
+      "heightFeet": 8,
+      "areaSF": 100
+    },
+    {
+      "id": "exclusion",
+      "raster": false,
+      "lines": [
+        "A102",
+        "Room Birch",
+        "EXCLUDE painting existing walls"
+      ],
+      "expected": [
+        "A102",
+        "Room Birch",
+        "EXCLUDE painting existing walls"
+      ],
+      "absent": [
+        "Paint all walls"
+      ]
+    },
+    {
+      "id": "no-quantity",
+      "raster": false,
+      "lines": [
+        "A103",
+        "Concept only - NOT FOR QUANTITY TAKEOFF",
+        "Verify all dimensions in field"
+      ],
+      "expected": [
+        "A103",
+        "Concept only - NOT FOR QUANTITY TAKEOFF",
+        "Verify all dimensions in field"
+      ],
+      "absent": [
+        "200 SF"
+      ]
+    },
+    {
+      "id": "schedule",
+      "raster": false,
+      "lines": [
+        "A104 FINISH SCHEDULE",
+        "ROOM | FLOOR | WALL",
+        "Maple | tile | plaster",
+        "Ash | cork | brick"
+      ],
+      "expected": [
+        "A104",
+        "Maple",
+        "tile",
+        "plaster",
+        "Ash",
+        "cork",
+        "brick"
+      ],
+      "absent": [
+        "carpet"
+      ],
+      "widthFeet": 10,
+      "heightFeet": 9,
+      "areaSF": 90
+    },
+    {
+      "id": "scan",
+      "raster": true,
+      "lines": [
+        "A105",
+        "Room Pine",
+        "18 ft",
+        "Finish concrete"
+      ],
+      "expected": [
+        "A105",
+        "Room Pine",
+        "18 ft",
+        "concrete"
+      ],
+      "absent": [
+        "granite"
+      ]
+    }
+  ]
+}

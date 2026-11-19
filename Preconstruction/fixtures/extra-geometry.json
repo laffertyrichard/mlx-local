@@ -1,0 +1,65 @@
+{
+  "source_id": "S01",
+  "frame_id": "FRAME01",
+  "plane_id": "PLAN-FLOOR",
+  "length_unit": "ft",
+  "scale": 18,
+  "routes": [
+    {
+      "id": "L01",
+      "role": "measured_polyline",
+      "pts": [
+        [
+          100,
+          200
+        ],
+        [
+          316,
+          200
+        ],
+        [
+          316,
+          380
+        ]
+      ],
+      "closed": false
+    }
+  ],
+  "counts": [
+    {
+      "id": "C01",
+      "physical_item_id": "F01",
+      "view": "plan"
+    },
+    {
+      "id": "C02",
+      "physical_item_id": "F02",
+      "view": "plan"
+    },
+    {
+      "id": "C03",
+      "physical_item_id": "F01",
+      "view": "elevation"
+    }
+  ],
+  "derived_frame_example": {
+    "parent_frame_id": "FRAME01",
+    "child_frame_id": "CROP01",
+    "crop_pdf_points": [
+      100,
+      200,
+      316,
+      380
+    ],
+    "parent_to_child_affine": [
+      2,
+      0,
+      0,
+      2,
+      -200,
+      -400
+    ],
+    "child_width": 432,
+    "child_height": 360
+  }
+}

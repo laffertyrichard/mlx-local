@@ -1,0 +1,272 @@
+{
+  "schema_version": "0.1",
+  "synthetic": true,
+  "revision_id": "SYN-REV-01",
+  "sources": [
+    {
+      "id": "S01",
+      "path": "synthetic-plan.pdf",
+      "sha256": "9b525f51cfb03e77d778ad09b5ec8d288236f13e8402b557decdcd1d57ebaf81",
+      "revision": "SYN-R1",
+      "role": "proposed",
+      "page_index": 0,
+      "sheet": "A-SYN-1"
+    },
+    {
+      "id": "S02",
+      "path": "synthetic-revision-note.txt",
+      "sha256": "0e0c07cfb37b660a3ca2c405ad79e5ef0c94f27fba9e3928499e6c143ef78ee3",
+      "revision": "SYN-R2",
+      "role": "specification",
+      "page_index": 0,
+      "sheet": "SYN-SCHEDULE"
+    }
+  ],
+  "calibrations": [
+    {
+      "id": "CAL01",
+      "source_id": "S01",
+      "frame_id": "FRAME01",
+      "plane_id": "PLAN-FLOOR",
+      "coordinate_unit": "pdf_points",
+      "length_unit": "ft",
+      "scale": 18,
+      "status": "candidate",
+      "checks": [
+        {
+          "axis": "x",
+          "coordinate_length": 216,
+          "real_length": 12,
+          "datum": "finished-face witness points x100 to x316"
+        },
+        {
+          "axis": "y",
+          "coordinate_length": 180,
+          "real_length": 10,
+          "datum": "finished-face witness points y200 to y380"
+        }
+      ]
+    }
+  ],
+  "quantities": [
+    {
+      "id": "QTY01",
+      "physical_item_id": "FLOOR01",
+      "operation": "install",
+      "trade": "flooring",
+      "location": "Room Alpha",
+      "material": null,
+      "unit": "SF",
+      "value": 114,
+      "scope_state": "provisional",
+      "basis": "G01 gross minus D01; selected material unresolved Q01",
+      "source_ids": [
+        "S01"
+      ],
+      "geometry_refs": [
+        "G01",
+        "D01"
+      ],
+      "question_ids": [
+        "Q01"
+      ],
+      "related_work_ids": [],
+      "relationship": "selected",
+      "installed_total_eligible": false
+    },
+    {
+      "id": "QTY02",
+      "physical_item_id": "FLOOR-EX",
+      "operation": "reference",
+      "trade": "flooring",
+      "location": "Room Alpha",
+      "material": null,
+      "unit": "SF",
+      "value": 40,
+      "scope_state": "existing_retained",
+      "basis": "Explicit synthetic retained reference, not new installation",
+      "source_ids": [
+        "S01"
+      ],
+      "geometry_refs": [],
+      "question_ids": [],
+      "related_work_ids": [],
+      "relationship": "selected",
+      "installed_total_eligible": false
+    },
+    {
+      "id": "QTY03",
+      "physical_item_id": "WALL-TILE01",
+      "operation": "install",
+      "trade": "tile",
+      "location": "Room Alpha",
+      "material": null,
+      "unit": "SF",
+      "value": null,
+      "scope_state": "unresolved",
+      "basis": "Height unestablished; missing design dimension Q02",
+      "source_ids": [
+        "S01"
+      ],
+      "geometry_refs": [],
+      "question_ids": [
+        "Q02"
+      ],
+      "related_work_ids": [],
+      "relationship": "selected",
+      "installed_total_eligible": false
+    },
+    {
+      "id": "QTY04",
+      "physical_item_id": "BASE01",
+      "operation": "install",
+      "trade": "trim",
+      "location": "Room Alpha",
+      "material": null,
+      "unit": "LF",
+      "value": null,
+      "scope_state": "unresolved",
+      "basis": "Depicted base not yet traced; unfinished measurement U01",
+      "source_ids": [
+        "S01"
+      ],
+      "geometry_refs": [],
+      "question_ids": [],
+      "related_work_ids": [],
+      "relationship": "selected",
+      "installed_total_eligible": false
+    },
+    {
+      "id": "QTY05",
+      "physical_item_id": "ROUTE01",
+      "operation": "install",
+      "trade": "trim",
+      "location": "Room Alpha",
+      "material": null,
+      "unit": "LF",
+      "value": 22,
+      "scope_state": "provisional",
+      "basis": "Synthetic open route: 12 + 10 ft",
+      "source_ids": [
+        "S01"
+      ],
+      "geometry_refs": [
+        "L01"
+      ],
+      "question_ids": [],
+      "related_work_ids": [],
+      "relationship": "selected",
+      "installed_total_eligible": false
+    },
+    {
+      "id": "QTY06",
+      "physical_item_id": "FIXTURES",
+      "operation": "install",
+      "trade": "electrical",
+      "location": "Room Alpha",
+      "material": null,
+      "unit": "EA",
+      "value": 2,
+      "scope_state": "provisional",
+      "basis": "Synthetic physical items F01/F02; F01 repeated in second view",
+      "source_ids": [
+        "S01"
+      ],
+      "geometry_refs": [
+        "C01",
+        "C02",
+        "C03"
+      ],
+      "question_ids": [],
+      "related_work_ids": [],
+      "relationship": "selected",
+      "installed_total_eligible": false
+    }
+  ],
+  "questions": [
+    {
+      "id": "Q01",
+      "quantity_ids": [
+        "QTY01"
+      ],
+      "source_ids": [
+        "S01",
+        "S02"
+      ],
+      "description": "Which floor material governs? R1 wood and R2 tile are conflicting; do not assume newest wins.",
+      "status": "open"
+    },
+    {
+      "id": "Q02",
+      "quantity_ids": [
+        "QTY03"
+      ],
+      "source_ids": [
+        "S01"
+      ],
+      "description": "Supply governing tile wall height; no quantity established.",
+      "status": "open"
+    }
+  ],
+  "unfinished_measurements": [
+    {
+      "id": "U01",
+      "quantity_ids": [
+        "QTY04"
+      ],
+      "source_ids": [
+        "S01"
+      ],
+      "description": "Trace depicted base run; this is incomplete measurement, not missing design.",
+      "status": "unfinished"
+    }
+  ],
+  "checks": [
+    {
+      "id": "CHK-arithmetic",
+      "dimension": "arithmetic",
+      "status": "pending",
+      "evidence": null
+    },
+    {
+      "id": "CHK-topology",
+      "dimension": "topology",
+      "status": "pending",
+      "evidence": null
+    },
+    {
+      "id": "CHK-visual",
+      "dimension": "visual",
+      "status": "pending",
+      "evidence": null
+    },
+    {
+      "id": "CHK-scope",
+      "dimension": "scope",
+      "status": "pending",
+      "evidence": null
+    },
+    {
+      "id": "CHK-artifact",
+      "dimension": "artifact",
+      "status": "pending",
+      "evidence": null
+    }
+  ],
+  "approvals": [
+    {
+      "gate": "reviewed_geometry",
+      "status": "pending",
+      "snapshot_sha256": null,
+      "actor": null,
+      "at": null
+    },
+    {
+      "gate": "scope_release",
+      "status": "pending",
+      "snapshot_sha256": null,
+      "actor": null,
+      "at": null
+    }
+  ]
+}

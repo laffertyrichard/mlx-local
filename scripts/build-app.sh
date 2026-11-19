@@ -34,6 +34,8 @@ install -m 0644 "$ROOT/Sources/MLXMenu/Resources/worker_watchdog.py" "$DEST/Cont
 install -m 0644 "$ROOT/Benchmarks/local-results.json" "$DEST/Contents/Resources/local-results.json"
 install -m 0644 "$ROOT/ModelMetadata/capabilities.json" "$DEST/Contents/Resources/capabilities.json"
 install -m 0644 "$ROOT/V3/model-profiles.json" "$DEST/Contents/Resources/model-profiles.json"
+# Preconstruction project template; no extended attributes so codesign accepts it.
+ditto --norsrc --noextattr --noqtn "$ROOT/Preconstruction/templates/project" "$DEST/Contents/Resources/preconstruction-template"
 
 cat > "$DEST/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>

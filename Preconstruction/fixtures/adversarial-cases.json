@@ -1,0 +1,117 @@
+{
+  "cases": [
+    {
+      "id": "overlap",
+      "status": "topology_must_fail",
+      "polys": [
+        [
+          [
+            0,
+            0
+          ],
+          [
+            10,
+            0
+          ],
+          [
+            10,
+            10
+          ],
+          [
+            0,
+            10
+          ]
+        ],
+        [
+          [
+            5,
+            0
+          ],
+          [
+            15,
+            0
+          ],
+          [
+            15,
+            10
+          ],
+          [
+            5,
+            10
+          ]
+        ]
+      ]
+    },
+    {
+      "id": "protruding_deduction",
+      "status": "topology_must_fail",
+      "gross": [
+        [
+          0,
+          0
+        ],
+        [
+          10,
+          0
+        ],
+        [
+          10,
+          10
+        ],
+        [
+          0,
+          10
+        ]
+      ],
+      "deduction": [
+        [
+          8,
+          8
+        ],
+        [
+          12,
+          8
+        ],
+        [
+          12,
+          12
+        ],
+        [
+          8,
+          12
+        ]
+      ]
+    },
+    {
+      "id": "calibration_conflict",
+      "status": "basis_must_hold",
+      "checks": [
+        {
+          "axis": "x",
+          "coordinate_length": 216,
+          "real_length": 12
+        },
+        {
+          "axis": "y",
+          "coordinate_length": 200,
+          "real_length": 10
+        }
+      ]
+    },
+    {
+      "id": "missing_height",
+      "status": "quantity_null",
+      "quantity_id": "QTY03"
+    },
+    {
+      "id": "revision_conflict",
+      "status": "scope_release_hold",
+      "question_id": "Q01"
+    },
+    {
+      "id": "stale_source",
+      "status": "resume_must_fail",
+      "change": "one source byte or calibration/profile digest"
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "project_name": "",
+  "scope": [],
+  "source_register": "../registers/sources.csv",
+  "coverage_register": "../registers/coverage.csv",
+  "callout_register": "../registers/callouts.csv",
+  "question_register": "../registers/questions.csv",
+  "unfinished_measurements": "../registers/unfinished-measurements.csv",
+  "plane_manifests": [],
+  "quantities": [],
+  "revision": "",
+  "checkpoint": ""
+}

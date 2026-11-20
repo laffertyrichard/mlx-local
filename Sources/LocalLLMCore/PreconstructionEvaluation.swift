@@ -129,7 +129,9 @@ public struct PreconEvaluationSet: Codable, Sendable {
             absent += item.absent.filter { value in items.contains { $0.text == value } }.map { "\(item.id): \($0)" }
             candidates += items.count
             supported += items.filter { candidate in
-                guard !item.raster, let quote = candidate.quote, !quote.isEmpty else { return false }
+                // A candidate that states no quote is supported by its own text.
+                let quote = candidate.quote ?? candidate.text
+                guard !item.raster, !quote.isEmpty else { return false }
                 return (page?.nativeText ?? "").contains(quote)
             }.count
             if !units.isEmpty && units.allSatisfy({ [.complete,.held].contains($0.status) }) { interpreted += 1 }

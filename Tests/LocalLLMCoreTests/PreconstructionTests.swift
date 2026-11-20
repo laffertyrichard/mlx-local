@@ -531,7 +531,7 @@ struct PreconstructionInterpretationTests {
         let units = try await InterpretationPipeline(store: workspace.store, project: project, interpreter: mock.closure).run(sources)
         #expect(units.map(\.stage) == [.nativeText] && units[0].status == .held)
         #expect(await mock.calls.allSatisfy { $0.image == nil && $0.text != nil })
-        #expect(units[0].candidates.map(\.heldReason) == [nil, "quote not found in source text", "quote not found in source text", nil, "low confidence"])
+        #expect(units[0].candidates.map(\.heldReason) == [nil, "quote not found in source text", "text not found on a source line", nil, "low confidence"])
         #expect(units[0].candidates.map(\.quote) == ["12 ft - finished faces", "ROOM BETA", nil, nil, "10 ft"], "an unstated quote stays null")
         #expect(fileDigests(project.appending(path: "revisions")) == before.0)
         #expect(fileDigests(project.appending(path: "measurements")) == before.1)

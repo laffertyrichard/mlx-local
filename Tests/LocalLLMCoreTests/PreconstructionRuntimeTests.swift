@@ -192,6 +192,10 @@ struct PreconstructionRuntimeTests {
         struct Answer: Decodable { var candidates: [[String: String]] }
         #expect(InterpretationPipeline.decode(Answer.self, from: #"{"candidates":[{"kind":"note","text":"a"}]"#)?.candidates.count == 1,
                 "an answer missing only its closing brace is read")
+        #expect(InterpretationPipeline.decode(Answer.self, from: #"{"candidates":[]"#)?.candidates.isEmpty == true)
+        #expect(!InterpretationPipeline.isCutOff(#"{"candidates":[{"kind":"dimension","text":"6" pipe"}]}"#),
+                "a closed answer with a badly quoted string is malformed, so it is asked for again, not blamed on the budget")
+        #expect(!InterpretationPipeline.isCutOff("I found [nothing") && InterpretationPipeline.isCutOff(#"{"candidates":[{"kind":"note"}"#))
         let other = try RtWorkspace(); defer { other.cleanUp() }
         let prose = RtRuntime { _,_,_ in "I could not find anything." }
         let failed = try await rtPipeline(other, PreconRuntimeInterpreter(manager: rtManager(prose), textModelID: "text")).run(other.sources(pages: 2))
@@ -200,7 +204,7 @@ struct PreconstructionRuntimeTests {
         #expect(await prose.calls.count == 4, "one retry per page, then the next page is still read")
     }
 
-    @Test("S01: chosen text model receives one local structured reasoning stage")
+    @Test("S01: chosen text model receives one local reasoning stage, decoded by the pipeline")
     func chosenTextModel() async throws {
         let runtime = RtRuntime()
         let adapter = PreconRuntimeInterpreter(manager: rtManager(runtime, models: [rtModel(), rtModel("other")]), textModelID: "text")

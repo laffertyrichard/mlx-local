@@ -95,7 +95,7 @@ public struct VisionFocus: Sendable {
 
 public struct InterpretationPipeline: Sendable {
     /// Bump when code-side rules change (quote support, OCR checks, chunking). Prompts are digested separately.
-    public static let version = "precon-interpret-8"
+    public static let version = "precon-interpret-9"
     public var store: PreconProjectStore
     public var project: URL
     public var interpreter: PreconInterpreter
@@ -206,7 +206,21 @@ extension VisionFocus {
 
 extension InterpretationPipeline {
     private struct OCRResult: Decodable { var text: String; var confidence: Double? }
-    private struct RawCandidates: Decodable { var candidates: [RawCandidate] }
+    /// A candidate the schema can't hold (an unknown kind, a number for text) is counted and skipped, not allowed to
+    /// fail the whole answer.
+    private struct RawCandidates: Decodable {
+        var candidates: [RawCandidate] = []
+        var unreadable = 0
+        private enum CodingKeys: CodingKey { case candidates }
+        private struct Element: Decodable {
+            var value: RawCandidate?
+            init(from decoder: Decoder) throws { value = try? RawCandidate(from: decoder) }
+        }
+        init(from decoder: Decoder) throws {
+            let elements = try decoder.container(keyedBy: CodingKeys.self).decode([Element].self, forKey: .candidates)
+            candidates = elements.compactMap(\.value); unreadable = elements.count - candidates.count
+        }
+    }
     private struct RawCandidate: Decodable {
         var kind: InterpretationCandidate.Kind
         var text: String
@@ -270,29 +284,48 @@ extension InterpretationPipeline {
         let lines = text.split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
         let skipped = lines.filter(repeated.contains).count
         if skipped > 0 {
-            unit.coverage.append("page \(unit.pageIndex + 1): \(skipped) lines repeated on most sheets (title block) not interpreted")
+            unit.coverage.append("page \(unit.pageIndex + 1): \(skipped) lines repeated on nearly every sheet (title block) not interpreted")
         }
         // The sheet ID is already read from the page, so its line is not sent to the model either. Each distinct line
-        // is sent once: a tag printed thirty times on a sheet is one candidate, and repeated input lines set the model
-        // repeating one answer until the output budget ran out on real sheets.
+        // is sent once: repeated input lines set the model repeating one answer until the output budget ran out on
+        // real sheets (sending all but back-to-back repeats lost 4 of 17 sheets, against 1).
+        // ponytail: a wrapped note whose last line also ended an earlier note reaches the model without that line.
+        let readable = lines.filter { !repeated.contains($0) && !sheets.contains($0) }
         var sent = Set<String>()
-        let content = lines.filter { !repeated.contains($0) && !sheets.contains($0) && sent.insert($0).inserted }
+        let content = readable.filter { sent.insert($0).inserted }
+        if content.count < readable.count {
+            unit.coverage.append("page \(unit.pageIndex + 1): \(readable.count - content.count) repeats of a line already sent were not sent again")
+        }
+        var cutOff = false
         let chunks = Self.chunks(content.joined(separator: "\n"), max: budget.maxInputChars, maxLines: budget.maxInputLines)
         unit.plannedChunks = chunks.count; unit.interpretedChunks = 0
         for (index, chunk) in chunks.prefix(budget.maxChunks).enumerated() {
-            let raw: RawCandidates
+            var raw: RawCandidates, cutHere = false
             do {
                 raw = try await ask(RawCandidates.self, unit: unit, stage: .nativeText, instruction: candidateInstruction,
                                     text: chunk, image: nil)
+            } catch let cut as Malformed where cut.cutOff {
+                // The page still fails, but the candidates the answer finished are kept and later chunks are read:
+                // a model stuck repeating one candidate has usually listed the others first.
+                cutOff = true; cutHere = true
+                unit.coverage.append("page \(unit.pageIndex + 1) chunk \(index + 1): output cut off at the \(budget.reservedOutputTokens)-token output budget")
+                guard let kept = Self.decodeBeforeCut(RawCandidates.self, from: cut.output) else { continue }
+                raw = kept
             } catch {
                 mark(&unit, error, label: "page \(unit.pageIndex + 1) chunk \(index + 1)")
                 addSheets(sheets, independent: independent, into: &unit) // read without the model, so kept when it fails
                 return
             }
-            accept(raw.candidates, verifiedAgainst: text, independent: independent, into: &unit)
-            unit.interpretedChunks = index + 1
+            // Checked against the page without its title block: a line the model never saw supports nothing.
+            accept(raw.candidates, verifiedAgainst: (readable + sheets).joined(separator: "\n"), independent: independent, into: &unit)
+            if cutHere { continue }
+            if raw.unreadable > 0 {
+                unit.coverage.append("page \(unit.pageIndex + 1) chunk \(index + 1): \(raw.unreadable) candidates of an unknown kind or shape ignored")
+            }
+            unit.interpretedChunks = (unit.interpretedChunks ?? 0) + 1 // a cut-off chunk is not counted
         }
         addSheets(sheets, independent: independent, into: &unit)
+        if cutOff { unit.status = .failed; return }
         if chunks.count > budget.maxChunks {
             unit.status = .partial
             unit.coverage.append("page \(unit.pageIndex + 1): \(chunks.count - budget.maxChunks) of \(chunks.count) text chunks not interpreted (input budget)")
@@ -327,16 +360,20 @@ extension InterpretationPipeline {
     private func accept(_ raw: [RawCandidate], verifiedAgainst text: String, independent: Bool,
                         into unit: inout InterpretationUnit) {
         let source = Self.normalized(text)
+        let sourceLines = text.split(separator: "\n").map { Self.normalized(String($0)) }.filter { !$0.isEmpty }
         for item in raw {
-            // A candidate that states no quote is checked against the source by its own text.
+            // A candidate that states no quote is checked against the source by its own text, which must sit on one
+            // line or be whole consecutive lines (a wrapped note): words from neighbouring lines don't make a dimension.
             let stated = item.quote?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             // The same kind, text and quote again adds nothing to review.
             if unit.candidates.contains(where: { $0.kind == item.kind && $0.text == item.text && ($0.quote ?? "") == stated }) { continue }
             let quote = stated.isEmpty ? item.text.trimmingCharacters(in: .whitespacesAndNewlines) : stated
             let quoteWords = Self.normalized(quote).split(separator: " ")
+            let found = stated.isEmpty ? Self.onOneLineOrWholeLines(Self.normalized(quote), in: sourceLines)
+                : Self.containsBounded(source, Self.normalized(quote))
             let reason: String? = quoteWords.isEmpty ? "no source quote"
                 : !independent ? Self.scannedPageHold
-                : !Self.containsBounded(source, Self.normalized(quote)) ? "quote not found in source text"
+                : !found ? (stated.isEmpty ? "text not found on a source line" : "quote not found in source text")
                 : !Self.isSubsequence(Self.normalized(item.text).split(separator: " "), of: quoteWords)
                     ? "candidate text not supported by its quote"
                 : item.confidence.map { $0 < minimumConfidence } == true ? "low confidence" : nil
@@ -360,33 +397,44 @@ extension InterpretationPipeline {
             try Task.checkCancellation()
             if let decoded = Self.decode(T.self, from: output) { return decoded }
             // Asking again at temperature 0 returns the same overlong answer.
-            if Self.isCutOff(output) { throw Malformed(cutOff: true) }
+            if Self.isCutOff(output) { throw Malformed(cutOff: true, output: output) }
         }
         throw Malformed(cutOff: false)
     }
 
     private struct Deferral: Error { var reason: String }
-    private struct Malformed: Error { var cutOff: Bool }
+    private struct Malformed: Error { var cutOff: Bool; var output = "" }
+
+    /// The elements a cut-off answer completed: everything up to its last closed object, with the array and object closed.
+    static func decodeBeforeCut<T: Decodable>(_ type: T.Type, from output: String) -> T? {
+        guard let start = output.firstIndex(of: "{"), let end = output.lastIndex(of: "}"), start < end else { return nil }
+        return try? PreconJSON.decoder.decode(T.self, from: Data((output[start...end] + "]}").utf8))
+    }
 
     /// The whole output, or failing that the outermost JSON object in it (models wrap JSON in fences or a sentence).
     static func decode<T: Decodable>(_ type: T.Type, from output: String) -> T? {
         let text = output.trimmingCharacters(in: .whitespacesAndNewlines)
         if let decoded = try? PreconJSON.decoder.decode(T.self, from: Data(text.utf8)) { return decoded }
-        guard let start = text.firstIndex(of: "{"), let end = text.lastIndex(of: "}"), start < end else { return nil }
-        if let decoded = try? PreconJSON.decoder.decode(T.self, from: Data(text[start...end].utf8)) { return decoded }
+        guard let start = text.firstIndex(of: "{") else { return nil }
+        if let end = text.lastIndex(of: "}"), start < end,
+           let decoded = try? PreconJSON.decoder.decode(T.self, from: Data(text[start...end].utf8)) { return decoded }
         // A complete answer that only lost its closing brace (seen from a real model) is still read.
         return text.hasSuffix("]") ? try? PreconJSON.decoder.decode(T.self, from: Data((text[start...] + "}").utf8)) : nil
     }
 
-    /// True when JSON stops inside a string, object or array: the model ran out of output tokens.
+    /// True when JSON stops inside a string, object or array: the model ran out of output tokens. An answer that
+    /// closes its array and object is complete however badly its strings are quoted, so that one is asked for again.
     static func isCutOff(_ output: String) -> Bool {
+        let compact = output.filter { !$0.isWhitespace }
+        if compact.hasSuffix("]}") || compact.hasSuffix("]}```") { return false }
         var depth = 0, inString = false, escaped = false, started = false
         for character in output {
             if escaped { escaped = false; continue }
             if inString { if character == "\\" { escaped = true } else if character == "\"" { inString = false }; continue }
             switch character {
             case "\"": inString = true
-            case "{", "[": depth += 1; started = true
+            case "{": depth += 1; started = true
+            case "[": depth += 1
             case "}", "]": depth -= 1
             default: break
             }
@@ -479,7 +527,8 @@ extension InterpretationPipeline {
     /// Sheet IDs from text alone: the token beside a "SHEET:" label, on its line or the next. Without any label, an ID
     /// that starts a line and looks like A101, A-101, S2.1 or A1.01.
     // ponytail: with no label, a door or equipment tag alone on a line (D104) still matches and IDs inside a sentence
-    // are skipped. A labelled page never falls back to the pattern, because code references (R314 ...) match it too.
+    // are skipped. A labelled page never falls back to the pattern, because code references (R314 ...) match it too;
+    // so a label whose ID is not on its line or the next gives no ID from text alone. No ID beats a wrong one.
     static func sheetIDs(in text: String) -> [String] {
         let lines = text.split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) }
         var found: [String] = [], labelled = false
@@ -501,26 +550,30 @@ extension InterpretationPipeline {
 
     /// On a PDF page the ID is the ID-shaped line nearest the "SHEET:" label: a text layer lists title-block strings in
     /// drawing order, so the label and its value are often far apart in the text but next to each other on the sheet.
-    // ponytail: first "SHEET:" label only, and the ID must sit within a tenth of the page's long side of it.
+    /// A label is a line holding nothing else ("SHEET:", "SHEET NUMBER"); "SEE SHEET: A-501" in a note is not one.
+    // ponytail: the ID must sit within a tenth of the page's long side of its label; anything else falls back to text.
     static func sheetIDs(on page: PDFPage, text: String) -> [String] {
-        let string = text as NSString, label = string.range(of: "SHEET:", options: .caseInsensitive)
         let whole = (page.string ?? "") as NSString
-        guard label.location != NSNotFound, whole.isEqual(to: text) || whole.contains(text),
-              let labelBounds = page.selection(for: whole.range(of: "SHEET:", options: .caseInsensitive))?.bounds(for: page) else {
-            return sheetIDs(in: text)
+        var labels: [CGRect] = [], tokens: [(id: String, bounds: CGRect)] = []
+        whole.enumerateSubstrings(in: NSRange(location: 0, length: whole.length), options: .byLines) { line, range, _, _ in
+            guard let line = line?.trimmingCharacters(in: .whitespaces),
+                  let bounds = page.selection(for: range)?.bounds(for: page) else { return }
+            if line.wholeMatch(of: sheetToken) != nil { tokens.append((line, bounds)) }
+            else if let label = line.wholeMatch(of: sheetLabel), label.output.1.isEmpty { labels.append(bounds) }
         }
         let box = page.bounds(for: .mediaBox), reach = max(box.width, box.height) / 10
-        var best: (id: String, distance: CGFloat)?
-        whole.enumerateSubstrings(in: NSRange(location: 0, length: whole.length), options: .byLines) { line, range, _, _ in
-            guard let id = line?.trimmingCharacters(in: .whitespaces), id.wholeMatch(of: sheetToken) != nil,
-                  let bounds = page.selection(for: range)?.bounds(for: page) else { return }
-            let distance = hypot(bounds.midX - labelBounds.midX, bounds.midY - labelBounds.midY)
-            if distance <= reach, distance < best?.distance ?? .infinity { best = (id, distance) }
+        var found: [String] = []
+        for label in labels {
+            let near = tokens.map { (id: $0.id, distance: hypot($0.bounds.midX - label.midX, $0.bounds.midY - label.midY)) }
+                .filter { $0.distance <= reach }.min { $0.distance < $1.distance }
+            if let near, !found.contains(near.id) { found.append(near.id) }
         }
-        return best.map { [$0.id] } ?? []
+        return found.isEmpty ? sheetIDs(in: text) : found
     }
 
-    /// Lines printed on most sheets of a set are title block, not that page's content.
+    /// Lines printed on at least four of every five sheets of a set are title block, not that page's content. A room
+    /// name or finish that recurs on the plans sharing one base drawing stays under that share (on the real set
+    /// measured, every title-block line was on 14 or more of 17 sheets and nothing else on more than 6).
     // ponytail: exact-line match, rescanned for every page read. A title-block line that wraps differently on some
     // sheets survives, and set-wide status notes are dropped with the rest; cache per document if sets get large.
     static let titleBlockMinimumPages = 5
@@ -531,7 +584,18 @@ extension InterpretationPipeline {
             let lines = (document.page(at: index)?.string ?? "").split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) }
             for line in Set(lines) where !line.isEmpty { pagesWithLine[line, default: 0] += 1 }
         }
-        return Set(pagesWithLine.filter { $0.value * 2 > document.pageCount }.keys)
+        return Set(pagesWithLine.filter { $0.value * 5 >= document.pageCount * 4 }.keys)
+    }
+
+    /// True when the text sits inside one line, or is exactly a run of whole consecutive lines.
+    static func onOneLineOrWholeLines(_ text: String, in lines: [String]) -> Bool {
+        if lines.contains(where: { containsBounded($0, text) }) { return true }
+        for start in lines.indices where text.hasPrefix(lines[start]) {
+            var joined = lines[start], next = start + 1
+            while joined.count < text.count, next < lines.count { joined += " " + lines[next]; next += 1 }
+            if joined == text { return true }
+        }
+        return false
     }
 
     /// Every candidate word appears in the quote, in the same order: "10 ft x 12 ft" is not "12 ft x 10 ft".

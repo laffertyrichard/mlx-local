@@ -266,6 +266,48 @@ Still not done: the native Read Page walkthrough, any vision-crop inference, and
 - **Limits.** A point counts as on an edge when it is within 1e-9 of the edge's size; an independent review found that the first, exact test let a real overlap pass on a diagonal wall with decimal coordinates (and gave false overlaps when the same shapes were rotated), so the 600-pair test now also runs rotated. Slivers thinner than that band are misjudged, which fuzzing only reached with edges over 30,000 units long. A deduction straddling two adjacent rooms still fails, because it must sit inside one gross polygon. The random check covers axis-aligned shapes only.
 - **No vertex snapping in the UI.** Clicks are rounded to 0.01 pt and never snap to an existing vertex or edge, so two rooms traced by hand along the same wall will usually be a hair apart (passes) or a hair overlapping (fails). Shared walls are only exact when coordinates coincide. Snapping is the follow-up that makes this useful in the app; not built.
 
+## Session 10 (2026-11-19): first real plan set, and the reading fixes it forced (`feat/real-sheet-reading`)
+
+A real 17-sheet residential remodel set (36 x 24 in, native text on every sheet) was run through the Read Page pipeline with the text model only, five times as fixes went in. The set, its outputs, raw model answers and logs live outside the repo in `/Users/mccully/projects/mlx-local-evidence/` (`plan-sets/` and `2026-11-19/real-sheet-trial/`); `plan-sets/` is git-ignored here. Nothing from the set is in the repo, and nothing from it may be added: this repo is public.
+
+**What went wrong on real sheets (each confirmed from raw model output)**
+- **A bad answer stopped the whole run.** The resource manager's own JSON check threw on invalid output, the adapter wrapped that as a runtime failure, and the pipeline recorded a deferral, which halts the run. The pipeline's "malformed after retry, fail the page" path (A22) never ran on the real runtime. With the old defaults the run stopped at sheet 3.
+- **Output overran the budget** (`finish_reason: length`, well-formed JSON cut off). Three separate causes:
+  1. Verbose candidates: each repeated its text as a quote and carried `confidence` and `bbox`.
+  2. A quote rule tried during this session made it worse: on a line holding ten dimensions the model repeated the whole line as the quote ten times. Quotes are no longer requested.
+  3. **Repetition loops.** The model repeats one candidate until the budget runs out (one answer was the same material 324 times). It happens on sheets where a string is printed many times, and which sheet it hits changes from run to run, even at temperature 0.
+- The title block came back as notes on every sheet, and the first deterministic sheet-ID pattern matched none of this set's IDs (a short word, a dot and a digit).
+
+**Changes**
+- **Failure handling.** No stage asks the manager for structured output. The pipeline decodes (the whole output, the outermost JSON object, or an answer missing only its closing brace), retries once, and fails that page only. Cut-off output is recognised and not retried. S01's assertion on the structured-output flag was changed to match.
+- **Compact output.** The instruction asks for `kind` and `text` only, on one line. `quote`, `confidence` and `bbox` are no longer requested.
+- **Two reviewed holds changed** (A17's expectations were edited; this deserves an independent review). A candidate with no quote is checked against the source by its own text instead of being held as "no source quote", and its stored quote stays null. A candidate with no confidence is no longer held as "low confidence"; a stated confidence under 0.6 still is.
+- **Budget.** Chunks are bounded by lines as well as characters. Defaults are 1,500 characters, 60 lines, 12 chunks and 3,072 output tokens (were 6,000 / no line bound / 4 / 1,024). `maxInputLines` is in the unit ID.
+- **Distinct lines.** Each distinct line of a page is sent to the model once, and a candidate with the same kind, text and quote is kept once.
+- **Title block.** In a PDF of 5 or more pages, a line printed on more than half the pages is skipped and counted in the unit's coverage. Set-wide status notes ("not for construction") go with it and are no longer candidates on any sheet. Read Page shows that coverage line as its message on multi-sheet sets.
+- **Sheet IDs.** On a native-text page the ID is the ID-shaped line nearest the `SHEET:` label by position, because the text layer lists title-block strings in drawing order. From text alone (scans) it is the token beside the label. The line-start pattern is used only when a page has no label. The ID's line is not sent to the model, and a failed page still reports its sheet.
+- Pipeline version is `precon-interpret-8`. The eval's source-support metric counts an unquoted candidate by its own text.
+
+**Results**
+
+| | Before | After |
+|---|---|---|
+| Dev set extraction | 82/85 | 84/85, no trap items, 2 extras (`dev-compact-3`) |
+| Real set, sheets read | stopped at sheet 3 with defaults; 9 of 17 with enlarged settings in 16 min | 16 of 17 with defaults in 4.5 min (`run-5`) |
+| Real set, sheet IDs | 3 of 17, plus 12 wrong | 17 of 17 |
+| Real set, candidates | 362 from 9 sheets, title block included | 743 from 16 sheets, 1 duplicate |
+
+The real set is now a tuning set: these are counts, not accuracy. The dev set has single pages and no `SHEET:` labels, so it says nothing about the title-block or sheet-ID rules; those rest on this one plan set and on mock tests.
+
+**Still wrong on the real set**
+- One sheet still fails to a repetition loop in the last run, and the affected sheet varies between runs (intermediate runs lost between one and four sheets). Not fixed. Options not yet tried: a repetition penalty on the generation settings, or keeping the distinct candidates from a looping answer.
+- Content quality is poor. Of the 743 candidates, 116 are three characters or fewer, and kinds are misused (equipment, fixtures and circuit labels as rooms or materials). Real sheets carry schedules, legends, keynotes and equipment that the four kinds don't describe. The synthetic sets predicted none of this.
+- A few title-block lines leak where a line wraps differently on some sheets.
+- Only 13 candidates were held; the rest were offered, so the holds filter almost nothing here.
+- The held-out synthetic set is spent and was not rerun; the prompt changed, so its earlier 22/22 no longer applies.
+- Vision crops get the same compact instruction and have still never run against a real model.
+- Open product question for the user: what should be extracted from a real sheet.
+
 ## Next steps (in order)
 
 0. **Save/retry walkthrough: the user reported on 2026-11-19 that they had done it** and believe it passed (Session 6 also records a manual walkthrough as user-tested). No run date, build SHA or log was recorded, so it is user-reported evidence, not a captured result. The steps are kept for reruns. Original text: the closeout session couldn't drive the UI (no Accessibility permission). Use a debug build of this branch and a throwaway data root:

@@ -15,3 +15,6 @@ xcuserdata/
 
 # Local package artifacts
 dist/
+
+# Plan sets for local trials; never committed (public repo)
+plan-sets/

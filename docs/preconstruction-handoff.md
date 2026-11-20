@@ -22,7 +22,7 @@ Roadmap phases 0-2 are implemented. Phase 3 core is implemented against mock run
 - `PreconstructionTakeoff.swift`:
   - `Calibration.evaluate` needs both an X and a Y check. If they disagree it returns `.conflict` with a nil scale; it never averages.
   - `Takeoff.area`, `length` and `physicalCount` calculate quantities.
-  - Topology: a deduction must be strictly inside its gross polygon (touching the boundary is `.unavailable`). Same-sign polygons that cross, nest or repeat fail, except an add-back (a positive polygon inside a deduction of its zone). Overlapping deductions fail (no ownership rule). Pairs that only touch (shared walls) are `.unavailable`. `.passed` only when every pair is decided.
+  - Topology (since Session 9): every pair is decided, so the result is `.passed` or `.failed`, never `.unavailable`. Same-sign polygons that share area fail (crossing, nested, repeated, or inscribed), except an add-back (a positive polygon inside a deduction of its zone). Polygons that only touch along a wall or corner pass. A deduction or add-back may touch the boundary of the polygon that contains it; it fails only when part of it lies outside.
   - `AreaPlane.revisionRecords` is the adapter from a plane to revision records.
   - `releasedTotal` / `provisionalTotal` / `releaseBlockers` handle totals and release gating.
 - `PreconstructionMeasurements.swift`:
@@ -234,7 +234,7 @@ The scanned page gave 4 candidates (`A105 Room`, `Pine`, `18 ft`, `Finish concre
 
 Still not done: the native Read Page walkthrough, any vision-crop inference, and the save/retry walkthrough after C1-01. PRs #5 and #4 were merged at the user's direction with those recorded as untested. (Superseded for the two walkthroughs: see Session 8.)
 
-## Session 8 (2026-11-19): extraction pass (uncommitted on `feat/extraction-pass`, branched from `main` `21d7547`)
+## Session 8 (2026-11-19): extraction pass (PR #6, merged to `main` as `d3a6d55`)
 
 - **Walkthroughs.** The user reports having done both the save/retry and the Read Page walkthroughs and believes both passed. Nothing was captured (see Next steps 0 and 3).
 - **Label convention** (user decision for rooms and materials; the rest is the same rule extended, stated in `Fixtures/precon-eval/README.md`): a candidate's text is the bare value. Room `Cedar` not `Room Cedar`; material `oak` not `Finish oak`; dimension `12 1/2 ft` without `Width`; a note is the whole line verbatim; a sheet is the bare ID.
@@ -258,6 +258,14 @@ Still not done: the native Read Page walkthrough, any vision-crop inference, and
 - The run logs record a diff hash taken before the handoff and README edits; Sources and the fixture JSON did not change after the runs.
 - 139 tests pass.
 
+## Session 9 (2026-11-19): shared-wall topology (`feat/shared-wall-topology`, branched from `main` `d3a6d55` after PR #6 merged)
+
+- `Takeoff.boundary(of:against:)` cuts each edge of one polygon at the other's vertices and classifies every piece as along the other's boundary, inside it or outside it. `overlaps` and `contains` are built on it; `touches`, `relation` and the `undecided` list are gone. This closes "touching same-sign polygons" (F12, Next steps 2) and replaces N03's strict-containment rule with an exact one: N03's notch case now fails outright instead of staying unavailable.
+- Behaviour changes: rooms sharing a wall or corner pass; deductions sharing an edge pass; a deduction against a wall and an add-back on its deduction's edge pass; the same outline with an extra collinear vertex and a polygon inscribed with every vertex on the other's edges now fail as overlaps.
+- Tests: 143 pass. New cases cover nine shared-wall shapes, diagonal walls, boundary containment, and 600 random rectangle and L-shape pairs checked against independent grid-cell counting for both overlap and containment.
+- **Limits.** A point counts as on an edge when it is within 1e-9 of the edge's size; an independent review found that the first, exact test let a real overlap pass on a diagonal wall with decimal coordinates (and gave false overlaps when the same shapes were rotated), so the 600-pair test now also runs rotated. Slivers thinner than that band are misjudged, which fuzzing only reached with edges over 30,000 units long. A deduction straddling two adjacent rooms still fails, because it must sit inside one gross polygon. The random check covers axis-aligned shapes only.
+- **No vertex snapping in the UI.** Clicks are rounded to 0.01 pt and never snap to an existing vertex or edge, so two rooms traced by hand along the same wall will usually be a hair apart (passes) or a hair overlapping (fails). Shared walls are only exact when coordinates coincide. Snapping is the follow-up that makes this useful in the app; not built.
+
 ## Next steps (in order)
 
 0. **Save/retry walkthrough: the user reported on 2026-11-19 that they had done it** and believe it passed (Session 6 also records a manual walkthrough as user-tested). No run date, build SHA or log was recorded, so it is user-reported evidence, not a captured result. The steps are kept for reruns. Original text: the closeout session couldn't drive the UI (no Accessibility permission). Use a debug build of this branch and a throwaway data root:
@@ -270,7 +278,7 @@ Still not done: the native Read Page walkthrough, any vision-crop inference, and
    7. Quit, relaunch without the variable, and reopen `Walk`. Expect "Reopened Rn from verified checkpoint" showing the last saved geometry. The newest checkpoint's `measurement_digests` must list only that revision's files.
    8. A11 refusal check: on the same page, choose Cal X, enter 6 ft and click the same two points. Expect the "traced at 18.000 pt/ft ... not supported (A11)" message, with the area unchanged.
 1. Done: `build-package.sh` built `dist/MLX-Menu-3.1.1.5.pkg` (unsigned) and `verify-package.sh` passed with the template allowlist. The app extracted from the pkg, launched from cwd `/`, created a project identical to its bundled template. Not installed; installing needs admin rights.
-2. Touching same-sign polygons (rooms sharing a wall) need a Boolean polygon engine to decide; until then that pair stays `unavailable`.
+2. Done in Session 9: touching polygons are decided without a Boolean engine. Open follow-up: the takeoff view has no vertex snapping, so hand-traced adjacent rooms rarely touch exactly.
 3. Done in Session 6: the runtime adapter, the ResourceManager admission/cancellation wiring, Read Page with candidate review, and the held-out eval set and runner. PR #5 is merged. Status of what was listed as remaining:
    - Read Page walkthrough: the user reported on 2026-11-19 that they had done it and believe it passed; no run date, build SHA or log. It is not known whether it was run after `e506c5e`, so reading a scanned page in the app with a working OCR model (PaddleOCR-VL or OvisOCR2) may still be unwalked.
    - Done in Session 7: C5-01. Use PaddleOCR-VL-1.6-4bit or OvisOCR2-8bit for OCR; dots.ocr-8bit returns nothing here.

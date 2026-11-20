@@ -111,8 +111,6 @@ public enum Takeoff {
     /// Each edge of `a` is cut at every vertex of `b` lying on it. With no proper crossing, a piece then lies wholly
     /// along one edge of `b` (both ends on it), wholly inside or wholly outside, so one midpoint test per piece decides
     /// it. That settles touching, overlap and containment without a Boolean polygon engine.
-    // ponytail: exact float comparisons, like the rest of this file. A skew shared wall whose vertices don't coincide
-    // may not be seen as collinear and can report a false overlap; use exact rationals if real traces hit that.
     private static func boundary(of a: [[Double]], against b: [[Double]]) -> (inside: Bool, outside: Bool)? {
         let edgesA = Array(zip(a, a.dropFirst() + [a[0]])), edgesB = Array(zip(b, b.dropFirst() + [b[0]]))
         if edgesA.contains(where: { e in edgesB.contains { properlyCross(e.0, e.1, $0.0, $0.1) } }) { return nil }
@@ -176,13 +174,25 @@ public enum Takeoff {
         (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])
     }
 
+    /// Which side of the line a-b the point c is on; 0 when c is on the line to within rounding. An exact zero test
+    /// misses a point on a diagonal wall with decimal coordinates (the cross product comes out near 1e-13), which let
+    /// a real overlap pass.
+    // ponytail: a fixed band of 1e-9 of the distance from c to the edge's ends, far below any traced gap. It misjudges
+    // only slivers that thin (fuzzing needed an edge over 30,000 units long); exact rationals if traces ever get there.
+    private static func side(_ a: [Double], _ b: [Double], _ c: [Double]) -> Double {
+        let value = cross(a, b, c)
+        let reach = hypot(b[0] - a[0], b[1] - a[1]) * (hypot(c[0] - a[0], c[1] - a[1]) + hypot(c[0] - b[0], c[1] - b[1]))
+        return abs(value) <= 1e-9 * reach ? 0 : value
+    }
+
     private static func onSegment(_ p: [Double], _ q: [Double], _ r: [Double]) -> Bool {
-        cross(p, q, r) == 0 && min(p[0], q[0]) <= r[0] && r[0] <= max(p[0], q[0])
-            && min(p[1], q[1]) <= r[1] && r[1] <= max(p[1], q[1])
+        let along = (r[0] - p[0]) * (q[0] - p[0]) + (r[1] - p[1]) * (q[1] - p[1])
+        let length2 = (q[0] - p[0]) * (q[0] - p[0]) + (q[1] - p[1]) * (q[1] - p[1])
+        return side(p, q, r) == 0 && along >= -1e-9 * length2 && along <= length2 * (1 + 1e-9)
     }
 
     private static func properlyCross(_ a: [Double], _ b: [Double], _ c: [Double], _ d: [Double]) -> Bool {
-        let values = [cross(a, b, c), cross(a, b, d), cross(c, d, a), cross(c, d, b)]
+        let values = [side(a, b, c), side(a, b, d), side(c, d, a), side(c, d, b)]
         return values.allSatisfy { $0 != 0 } && (values[0] > 0) != (values[1] > 0) && (values[2] > 0) != (values[3] > 0)
     }
 

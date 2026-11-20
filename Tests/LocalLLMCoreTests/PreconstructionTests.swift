@@ -786,6 +786,21 @@ struct PreconstructionCorrectiveTests {
         #expect(try Takeoff.area(plane).topology == (passes ? .passed : .failed))
     }
 
+    @Test("decimal coordinates on a diagonal: rounding in the collinearity test must not flip the result")
+    func skewDecimals() throws {
+        func topology(_ a: [[Double]], _ b: [[Double]], sign: Int = 1) throws -> CheckStatus {
+            var plane = try plane([.init(id: "G01", zone: "Z01", sign: 1, pts: a), .init(id: sign > 0 ? "G02" : "D01", zone: "Z01", sign: sign, pts: b)])
+            plane.scale = 1
+            return try Takeoff.area(plane).topology
+        }
+        #expect(try topology([[43.7, 43.7], [36.5, 50.9], [36.5, 36.5], [58.1, 36.5]], [[36.5, 36.5], [36.5, 50.9], [50.9, 36.5]]) == .failed,
+                "the second room lies inside the first; a vertex of the first sits on its hypotenuse")
+        #expect(try topology([[58.1, 43.7], [43.7, 36.5], [50.9, 43.7]], [[43.7, 36.5], [58.1, 50.9], [50.9, 58.1], [50.9, 50.9]]) == .passed,
+                "skew T junction: they only touch along a wall")
+        #expect(try topology([[36.5, 58.1], [58.1, 50.9], [43.7, 36.5]], [[58.1, 50.9], [43.7, 50.9], [50.9, 43.7]], sign: -1) == .passed,
+                "a deduction with one edge along a skew gross edge is contained")
+    }
+
     @Test("deductions and add-backs may touch a boundary; containment is still exact")
     func boundaryContainment() throws {
         let gross = room("G01", 1, 100, 200, 216, 180), island = room("D01", -1, 154, 254, 36, 54)
@@ -800,7 +815,7 @@ struct PreconstructionCorrectiveTests {
         #expect(try Takeoff.area(notch).topology == .failed, "the deduction fills the notch: every vertex is a gross vertex, yet it lies outside")
     }
 
-    @Test("overlap and containment agree with counting grid cells on 600 random rectangle and L-shape pairs")
+    @Test("overlap and containment agree with counting grid cells on 600 random rectangle and L-shape pairs, square to the page and rotated")
     func topologyMatchesGridCells() throws {
         var state: UInt64 = 0x5EED
         func next(_ n: Int) -> Int { state = state &* 6364136223846793005 &+ 1442695040888963407; return Int((state >> 33) % UInt64(n)) }
@@ -821,8 +836,13 @@ struct PreconstructionCorrectiveTests {
         }
         var template = try plane([]); template.scale = 1
         var seen = (touching: 0, overlapping: 0, contained: 0)
-        for _ in 0..<600 {
-            let a = shape(), b = shape(), cellsA = cells(a), cellsB = cells(b)
+        // The same pairs again, rotated, scaled and shifted so no coordinate or cross product is exact.
+        func turned(_ pts: [[Double]]) -> [[Double]] {
+            pts.map { [36.5 + 7.2 * ($0[0] * cos(0.37) - $0[1] * sin(0.37)), 12.3 + 7.2 * ($0[0] * sin(0.37) + $0[1] * cos(0.37))] }
+        }
+        for round in 0..<1200 {
+            let squareA = shape(), squareB = shape(), cellsA = cells(squareA), cellsB = cells(squareB)
+            let skew = round >= 600, a = skew ? turned(squareA) : squareA, b = skew ? turned(squareB) : squareB
             template.polys = [.init(id: "G01", zone: "Z01", sign: 1, pts: a), .init(id: "G02", zone: "Z01", sign: 1, pts: b)]
             let overlap = !cellsA.isDisjoint(with: cellsB)
             #expect((try Takeoff.area(template).topology == .failed) == overlap, "overlap \(a) \(b)")

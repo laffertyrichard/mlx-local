@@ -81,6 +81,8 @@ struct PreconstructionReadPageTests {
     @Test("sheet IDs are read only from line starts", arguments: [
         ("A101\nRoom", ["A101"]), ("A-201 PLAN\n  S2.1\nA1.01", ["A-201", "S2.1", "A1.01"]), ("G-002\nG-002", ["G-002"]),
         ("Door D104\nM10 bolts\nRev R2\nSee A-501\nA1012\nA-10\nA-101b", []),
+        ("SHEET:\nFRAME.2\nR314 Smoke alarms", ["FRAME.2"]), ("Sheet No: P-4", ["P-4"]), ("SHEET INDEX\nA101", ["A101"]),
+        ("SHEET:\nPROJECT: 7\nR314 Smoke alarms", []),
     ])
     func sheetIDPattern(text: String, expected: [String]) {
         #expect(InterpretationPipeline.sheetIDs(in: text) == expected)
@@ -107,6 +109,65 @@ struct PreconstructionReadPageTests {
         #expect((sheets.first?.heldReason == nil) == !raster)
         #expect(unit.status == (raster ? .held : .complete))
         if !modelAlsoFinds { #expect(sheets.first?.confidence == nil && sheets.first?.quote == "B-310") }
+        // A page whose model output is cut off still reports the sheet it is.
+        let cutOff: PreconInterpreter = { _ in #"{"candidates":[{"kind":"note","text":"Room"# }
+        let other = root.appending(path: "other"); try FileManager.default.createDirectory(at: other, withIntermediateDirectories: true)
+        let failed = try #require(try await InterpretationPipeline(store: store, project: other, interpreter: cutOff)
+            .run(try store.importSource(pdf, into: other, role: .proposed, revision: "T")).first)
+        if !raster { #expect(failed.status == .failed && failed.candidates.map(\.text) == ["B-310"]) }
+    }
+
+    @Test("chunks are bounded by lines as well as characters")
+    func lineBoundedChunks() {
+        #expect(InterpretationPipeline.chunks("a\nb\nc\nd\ne", max: 100, maxLines: 2) == ["a\nb", "c\nd", "e"])
+        #expect(InterpretationPipeline.chunks("a\nb\nc", max: 100) == ["a\nb\nc"])
+    }
+
+    @Test("a sheet set's title block is skipped, and each sheet's ID is the one beside the SHEET label")
+    func titleBlockAndLabelledSheetID() async throws {
+        let root = FileManager.default.temporaryDirectory.appending(path: "PreconTitle-\(UUID())")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = try PreconProjectStore(root: root), project = root.appending(path: "project")
+        try FileManager.default.createDirectory(at: project, withIntermediateDirectories: true)
+        // Drawn in this order, so the text layer puts the label far from its ID, as real title blocks do.
+        let pdf = root.appending(path: "set.pdf")
+        var box = CGRect(x: 0, y: 0, width: 612, height: 792)
+        let context = try #require(CGContext(pdf as CFURL, mediaBox: &box, nil))
+        for page in 1...6 {
+            context.beginPDFPage(nil)
+            NSGraphicsContext.saveGraphicsState()
+            NSGraphicsContext.current = NSGraphicsContext(cgContext: context, flipped: false)
+            var items: [(String, CGFloat, CGFloat)] = [("SHEET:", 500, 60), ("OWNER: Sample Owner", 380, 110), ("NOT FOR CONSTRUCTION", 380, 140), ("T.9", 72, 500)]
+            if page < 6 { items.append(("Unique note \(page)", 72, 700)) }
+            items.append(("Q.\(page)", 500, 40))
+            for (text, x, y) in items {
+                NSAttributedString(string: text, attributes: [.font: NSFont.systemFont(ofSize: 12)]).draw(at: NSPoint(x: x, y: y))
+            }
+            NSGraphicsContext.restoreGraphicsState()
+            context.endPDFPage()
+        }
+        context.closePDF()
+        let sources = try store.importSource(pdf, into: project, role: .proposed, revision: "T")
+        final class Seen: @unchecked Sendable { let lock = NSLock(); var texts: [String] = [] }
+        let seen = Seen()
+        let interpreter: PreconInterpreter = { request in
+            let text = request.text ?? ""
+            seen.lock.withLock { seen.texts.append(text) }
+            let first = String(text.split(separator: "\n").first ?? "")
+            return String(decoding: try JSONSerialization.data(withJSONObject: ["candidates": [["kind": "note", "text": first]]]), as: UTF8.self)
+        }
+        let units = try await InterpretationPipeline(store: store, project: project, interpreter: interpreter).run(sources)
+        #expect(units.count == 6 && units.allSatisfy { $0.stage == .nativeText && $0.status == .complete })
+        #expect(seen.texts == (1...5).map { "Unique note \($0)" }, "title-block lines never reach the model, and the empty sixth sheet makes no call")
+        for (index, unit) in units.enumerated() {
+            #expect(unit.candidates.filter { $0.kind == .sheet }.map(\.text) == ["Q.\(index + 1)"], "the far T.9 tag is not the sheet ID")
+            #expect(unit.coverage.count == 1 && unit.coverage[0].contains("repeated on most sheets"))
+        }
+        let note = try #require(units[0].candidates.first { $0.kind == .note })
+        #expect(note.text == "Unique note 1" && note.heldReason == nil && note.quote == nil && note.confidence == nil,
+                "a compact candidate with no quote or confidence is checked by its own text and offered")
+        #expect(units[5].plannedChunks == 0 && units[5].candidates.count == 1)
     }
 
     @Test("the worked example shares no value with either evaluation fixture", arguments: ["expected", "dev"])

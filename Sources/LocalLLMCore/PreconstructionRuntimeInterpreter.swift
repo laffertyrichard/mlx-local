@@ -107,7 +107,7 @@ public struct PreconRuntimeInterpreter: Sendable {
             effectivePrompt += "Examples:\n" + examples.joined(separator: "\n---\n") + "\n\n"
         }
         if input.stage == .ocr { effectivePrompt += "Extract the text content from this image.\n\n" }
-        effectivePrompt += input.instruction + "\n" + (input.text ?? "") + "\nReturn only valid JSON."
+        effectivePrompt += input.instruction + "\n" + (input.text ?? "")
         // ponytail: mirrors RouterRuntimes.swift:121,206-237; share prompt/threshold policy if that backend changes.
         if model.backend == .mlxLM, effectivePrompt.count > max(8_000, model.contextWindow * 3) {
             throw PreconRuntimeError.unsupported("Effective prompt exceeds the single-call backend limit; shorten the profile or input")
@@ -125,8 +125,10 @@ public struct PreconRuntimeInterpreter: Sendable {
         // The worker runtime answers OCR with page markdown under its own fixed prompt, never JSON (OCR models such as
         // dots.ocr don't follow a JSON instruction), so send no instruction and build the pipeline's JSON below.
         let ocr = input.stage == .ocr
+        // No stage asks the manager for structured output: its own JSON check throws on invalid or cut-off output, which
+        // would hide the text from the pipeline and stop the run. The pipeline decodes, retries once and fails the page.
         let request = InferenceRequest(text: ocr ? "" : input.instruction + "\n" + (input.text ?? ""), attachments: attachments,
-                                       requiresStructuredOutput: !ocr, localOnly: true, forcedModelID: id)
+                                       requiresStructuredOutput: false, localOnly: true, forcedModelID: id)
         let kind: PipelineStageKind = input.stage == .ocr ? .ocr : input.stage == .vision ? .visionExtraction : .reasoning
         let stage = RouteStage(kind: kind, modelID: id, backend: model.backend, requiredCapabilities: [capability],
                                inputModalities: [modality], modelProfile: profile)

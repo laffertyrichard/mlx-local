@@ -9,11 +9,15 @@ public enum InterpretationStage: String, Codable, Sendable { case nativeText = "
 
 public struct InterpretationBudget: Codable, Equatable, Sendable {
     public var maxInputChars: Int
+    public var maxInputLines: Int
     public var maxChunks: Int
     public var reservedOutputTokens: Int
 
-    public init(maxInputChars: Int = 6_000, maxChunks: Int = 4, reservedOutputTokens: Int = 1_024) {
-        self.maxInputChars = maxInputChars; self.maxChunks = maxChunks; self.reservedOutputTokens = reservedOutputTokens
+    /// A drawing page is many short strings, and each becomes one candidate, so output grows with the line count, not
+    /// the character count. The defaults keep one chunk's candidates inside the output allowance on dense sheets.
+    public init(maxInputChars: Int = 1_500, maxInputLines: Int = 60, maxChunks: Int = 12, reservedOutputTokens: Int = 3_072) {
+        self.maxInputChars = maxInputChars; self.maxInputLines = maxInputLines
+        self.maxChunks = maxChunks; self.reservedOutputTokens = reservedOutputTokens
     }
 }
 
@@ -91,7 +95,7 @@ public struct VisionFocus: Sendable {
 
 public struct InterpretationPipeline: Sendable {
     /// Bump when code-side rules change (quote support, OCR checks, chunking). Prompts are digested separately.
-    public static let version = "precon-interpret-7"
+    public static let version = "precon-interpret-8"
     public var store: PreconProjectStore
     public var project: URL
     public var interpreter: PreconInterpreter
@@ -138,7 +142,7 @@ public struct InterpretationPipeline: Sendable {
         let crop = focus.map { $0.rect.map { String($0) }.joined(separator: ",") } ?? "page"
         let prompts = StableDigest.sha256(Data((ocrInstruction + "\u{0}" + candidateInstruction).utf8))
         let key = [Self.version, prompts, profileDigest, String(minimumConfidence), String(budget.maxInputChars),
-                   String(budget.maxChunks), String(budget.reservedOutputTokens), source.sha256,
+                   String(budget.maxInputLines), String(budget.maxChunks), String(budget.reservedOutputTokens), source.sha256,
                    String(source.pageIndex), crop].joined(separator: "|")
         return StableDigest.sha256(Data(key.utf8))
     }
@@ -166,7 +170,10 @@ public struct InterpretationPipeline: Sendable {
             guard let ocr = await readOCR(page, into: &unit) else { return unit }
             text = ocr
         }
-        await extract(text, independent: !native.isEmpty, into: &unit)
+        // The title block and the sheet ID are read from the PDF itself; a scan has only its OCR text to go on.
+        let repeated = native.isEmpty ? [] : Self.repeatedLines(in: document)
+        let sheets = native.isEmpty ? Self.sheetIDs(in: text) : Self.sheetIDs(on: page, text: native)
+        await extract(text, skipping: repeated, sheets: sheets, independent: !native.isEmpty, into: &unit)
         withExtendedLifetime(document) {}
         return unit
     }
@@ -210,6 +217,8 @@ extension InterpretationPipeline {
 
     public static let defaultOCRInstruction = #"Transcribe all text in this single image. Return only JSON: {"text": string, "confidence": number 0-1}."#
     /// Values in the worked example must stay out of both evaluation fixtures (tested), so a parroted example can't score.
+    /// No quote is requested: on a line holding ten dimensions the model repeats the whole line ten times, which overran
+    /// the output budget on a real dimension plan. Each candidate is checked against the source by its own text.
     static let candidateExample = """
         Example input:
         Room Willow
@@ -218,23 +227,20 @@ extension InterpretationPipeline {
         HOLD for owner approval
         AREA | TRIM
         Yew | nickel
-        Example output: {"candidates": [{"kind": "room", "text": "Willow", "quote": "Room Willow", "confidence": 0.9, "bbox": null}, \
-        {"kind": "dimension", "text": "6 ft 2 in", "quote": "Depth 6 ft 2 in", "confidence": 0.9, "bbox": null}, \
-        {"kind": "material", "text": "cherry", "quote": "Trim cherry", "confidence": 0.9, "bbox": null}, \
-        {"kind": "note", "text": "HOLD for owner approval", "quote": "HOLD for owner approval", "confidence": 0.9, "bbox": null}, \
-        {"kind": "room", "text": "Yew", "quote": "Yew", "confidence": 0.9, "bbox": null}, \
-        {"kind": "material", "text": "nickel", "quote": "nickel", "confidence": 0.9, "bbox": null}]}
+        Example output: {"candidates":[{"kind":"room","text":"Willow"},{"kind":"dimension","text":"6 ft 2 in"},\
+        {"kind":"material","text":"cherry"},{"kind":"note","text":"HOLD for owner approval"},{"kind":"room","text":"Yew"},\
+        {"kind":"material","text":"nickel"}]}
         """
     public static let defaultCandidateInstruction = """
         List the rooms, materials, dimensions and notes written in the input. Do not infer, compute or combine anything.
         - room: the name only, without a label such as "Room", "RM" or "Space".
         - material: the material only, without the surface it is on, such as "Finish", "Floor", "Wall", "Base" or "Ceiling".
         - dimension: the value with its units exactly as written, without a label such as "Width" or "Height".
-        - note: a whole instruction, exclusion or status line, word for word.
-        One candidate per item. Skip sheet numbers, titles and table column headers. In a table, list each cell by what \
-        its column holds.
-        Return only JSON: {"candidates": [{"kind": "dimension|room|material|note|sheet", "text": string, \
-        "quote": exact source text, "confidence": number 0-1, "bbox": [x, y, w, h] or null}]}.
+        - note: a whole instruction, exclusion or status line, word for word. Join a note that wraps over several lines.
+        One candidate per item. Skip sheet numbers, titles, table column headers, lone numbers and list markers. In a \
+        table, list each cell by what its column holds.
+        Return only JSON on one line with no extra whitespace: \
+        {"candidates":[{"kind":"dimension|room|material|note","text":string}]}.
         \(candidateExample)
         Now the input:
         """
@@ -242,7 +248,7 @@ extension InterpretationPipeline {
     /// Returns nil and marks the unit when the page can't be read; an unread page is never empty text.
     private func readOCR(_ page: PDFPage, into unit: inout InterpretationUnit) async -> String? {
         let label = "page \(unit.pageIndex + 1)"
-        let result: OCRResult?
+        let result: OCRResult
         do {
             result = try await withImage(page, crop: nil) { image in
                 try await ask(OCRResult.self, unit: unit, stage: .ocr, instruction: ocrInstruction, text: nil, image: image)
@@ -251,7 +257,6 @@ extension InterpretationPipeline {
             mark(&unit, error, label: "\(label) OCR")
             return nil
         }
-        guard let result else { unit.status = .failed; unit.coverage.append("\(label) OCR: malformed output after retry"); return nil }
         let text = result.text.trimmingCharacters(in: .whitespacesAndNewlines)
         let problem = text.isEmpty ? "no text read" : (result.confidence ?? 0) < minimumConfidence ? "low confidence"
             : Self.isRepetitive(text) ? "repeated output" : nil
@@ -260,33 +265,48 @@ extension InterpretationPipeline {
     }
 
     /// Bounded chunks in order; whatever exceeds the budget is recorded as uninterpreted, never dropped silently.
-    private func extract(_ text: String, independent: Bool, into unit: inout InterpretationUnit) async {
-        let chunks = Self.chunks(text, max: budget.maxInputChars)
+    private func extract(_ text: String, skipping repeated: Set<String>, sheets: [String], independent: Bool,
+                         into unit: inout InterpretationUnit) async {
+        let lines = text.split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+        let skipped = lines.filter(repeated.contains).count
+        if skipped > 0 {
+            unit.coverage.append("page \(unit.pageIndex + 1): \(skipped) lines repeated on most sheets (title block) not interpreted")
+        }
+        // The sheet ID is already read from the page, so its line is not sent to the model either. Each distinct line
+        // is sent once: a tag printed thirty times on a sheet is one candidate, and repeated input lines set the model
+        // repeating one answer until the output budget ran out on real sheets.
+        var sent = Set<String>()
+        let content = lines.filter { !repeated.contains($0) && !sheets.contains($0) && sent.insert($0).inserted }
+        let chunks = Self.chunks(content.joined(separator: "\n"), max: budget.maxInputChars, maxLines: budget.maxInputLines)
         unit.plannedChunks = chunks.count; unit.interpretedChunks = 0
         for (index, chunk) in chunks.prefix(budget.maxChunks).enumerated() {
-            let raw: RawCandidates?
+            let raw: RawCandidates
             do {
                 raw = try await ask(RawCandidates.self, unit: unit, stage: .nativeText, instruction: candidateInstruction,
                                     text: chunk, image: nil)
-            } catch { mark(&unit, error, label: "page \(unit.pageIndex + 1) chunk \(index + 1)"); return }
-            guard let raw else {
-                unit.status = .failed; unit.coverage.append("page \(unit.pageIndex + 1) chunk \(index + 1): malformed output after retry")
+            } catch {
+                mark(&unit, error, label: "page \(unit.pageIndex + 1) chunk \(index + 1)")
+                addSheets(sheets, independent: independent, into: &unit) // read without the model, so kept when it fails
                 return
             }
             accept(raw.candidates, verifiedAgainst: text, independent: independent, into: &unit)
             unit.interpretedChunks = index + 1
         }
-        // Sheet IDs are read from the text itself: a pattern is more reliable here than asking a model.
-        for id in Self.sheetIDs(in: text) where !unit.candidates.contains(where: { $0.kind == .sheet && $0.text == id }) {
+        addSheets(sheets, independent: independent, into: &unit)
+        if chunks.count > budget.maxChunks {
+            unit.status = .partial
+            unit.coverage.append("page \(unit.pageIndex + 1): \(chunks.count - budget.maxChunks) of \(chunks.count) text chunks not interpreted (input budget)")
+        }
+    }
+
+    /// Sheet IDs are read from the page itself: a label or pattern is more reliable here than asking a model.
+    private func addSheets(_ sheets: [String], independent: Bool, into unit: inout InterpretationUnit) {
+        for id in sheets where !unit.candidates.contains(where: { $0.kind == .sheet && $0.text == id }) {
             let number = String(format: "%03d", unit.candidates.count + 1)
             unit.candidates.append(InterpretationCandidate(id: "C-\(unit.id.prefix(8))-\(number)", kind: .sheet, text: id, quote: id,
                                                            sourceId: unit.sourceId, pageIndex: unit.pageIndex, bbox: nil,
                                                            confidence: nil, heldReason: independent ? nil : Self.scannedPageHold))
             if !independent, unit.status == .complete { unit.status = .held }
-        }
-        if chunks.count > budget.maxChunks {
-            unit.status = .partial
-            unit.coverage.append("page \(unit.pageIndex + 1): \(chunks.count - budget.maxChunks) of \(chunks.count) text chunks not interpreted (input budget)")
         }
     }
 
@@ -297,7 +317,6 @@ extension InterpretationPipeline {
             let raw = try await withImage(page, crop: crop) { image in
                 try await ask(RawCandidates.self, unit: unit, stage: .vision, instruction: candidateInstruction, text: nil, image: image)
             }
-            guard let raw else { unit.status = .failed; unit.coverage.append("\(label): malformed output after retry"); return }
             accept(raw.candidates, verifiedAgainst: pageText, independent: !pageText.isEmpty, into: &unit)
             unit.interpretedChunks = 1
         } catch { mark(&unit, error, label: label) }
@@ -309,25 +328,29 @@ extension InterpretationPipeline {
                         into unit: inout InterpretationUnit) {
         let source = Self.normalized(text)
         for item in raw {
-            let quote = item.quote?.trimmingCharacters(in: .whitespacesAndNewlines)
-            let quoteWords = Self.normalized(quote ?? "").split(separator: " ")
+            // A candidate that states no quote is checked against the source by its own text.
+            let stated = item.quote?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            // The same kind, text and quote again adds nothing to review.
+            if unit.candidates.contains(where: { $0.kind == item.kind && $0.text == item.text && ($0.quote ?? "") == stated }) { continue }
+            let quote = stated.isEmpty ? item.text.trimmingCharacters(in: .whitespacesAndNewlines) : stated
+            let quoteWords = Self.normalized(quote).split(separator: " ")
             let reason: String? = quoteWords.isEmpty ? "no source quote"
                 : !independent ? Self.scannedPageHold
-                : !Self.containsBounded(source, Self.normalized(quote!)) ? "quote not found in source text"
+                : !Self.containsBounded(source, Self.normalized(quote)) ? "quote not found in source text"
                 : !Self.isSubsequence(Self.normalized(item.text).split(separator: " "), of: quoteWords)
                     ? "candidate text not supported by its quote"
-                : (item.confidence ?? 0) < minimumConfidence ? "low confidence" : nil
+                : item.confidence.map { $0 < minimumConfidence } == true ? "low confidence" : nil
             let id = "C-\(unit.id.prefix(8))-\(String(format: "%03d", unit.candidates.count + 1))"
-            unit.candidates.append(InterpretationCandidate(id: id, kind: item.kind, text: item.text, quote: quote,
+            unit.candidates.append(InterpretationCandidate(id: id, kind: item.kind, text: item.text, quote: stated.isEmpty ? nil : stated,
                                                            sourceId: unit.sourceId, pageIndex: unit.pageIndex, bbox: item.bbox,
                                                            confidence: item.confidence, heldReason: reason))
             if reason != nil, unit.status == .complete { unit.status = .held }
         }
     }
 
-    /// One call plus one constrained retry. Nil means malformed both times; interpreter errors propagate.
+    /// One call plus one retry. Throws `Malformed` when neither decodes; interpreter errors propagate.
     private func ask<T: Decodable>(_ type: T.Type, unit: InterpretationUnit, stage: InterpretationStage, instruction: String,
-                                   text: String?, image: URL?) async throws -> T? {
+                                   text: String?, image: URL?) async throws -> T {
         for attempt in 0..<2 {
             try Task.checkCancellation()
             if let reason = await gate() { throw Deferral(reason: reason) }
@@ -335,15 +358,48 @@ extension InterpretationPipeline {
                                                 maxOutputTokens: budget.reservedOutputTokens, isRetry: attempt > 0)
             let output = try await interpreter(request)
             try Task.checkCancellation()
-            if let decoded = try? PreconJSON.decoder.decode(T.self, from: Data(output.utf8)) { return decoded }
+            if let decoded = Self.decode(T.self, from: output) { return decoded }
+            // Asking again at temperature 0 returns the same overlong answer.
+            if Self.isCutOff(output) { throw Malformed(cutOff: true) }
         }
-        return nil
+        throw Malformed(cutOff: false)
     }
 
     private struct Deferral: Error { var reason: String }
+    private struct Malformed: Error { var cutOff: Bool }
+
+    /// The whole output, or failing that the outermost JSON object in it (models wrap JSON in fences or a sentence).
+    static func decode<T: Decodable>(_ type: T.Type, from output: String) -> T? {
+        let text = output.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let decoded = try? PreconJSON.decoder.decode(T.self, from: Data(text.utf8)) { return decoded }
+        guard let start = text.firstIndex(of: "{"), let end = text.lastIndex(of: "}"), start < end else { return nil }
+        if let decoded = try? PreconJSON.decoder.decode(T.self, from: Data(text[start...end].utf8)) { return decoded }
+        // A complete answer that only lost its closing brace (seen from a real model) is still read.
+        return text.hasSuffix("]") ? try? PreconJSON.decoder.decode(T.self, from: Data((text[start...] + "}").utf8)) : nil
+    }
+
+    /// True when JSON stops inside a string, object or array: the model ran out of output tokens.
+    static func isCutOff(_ output: String) -> Bool {
+        var depth = 0, inString = false, escaped = false, started = false
+        for character in output {
+            if escaped { escaped = false; continue }
+            if inString { if character == "\\" { escaped = true } else if character == "\"" { inString = false }; continue }
+            switch character {
+            case "\"": inString = true
+            case "{", "[": depth += 1; started = true
+            case "}", "]": depth -= 1
+            default: break
+            }
+        }
+        return started && (inString || depth > 0)
+    }
 
     private func mark(_ unit: inout InterpretationUnit, _ error: Error, label: String) {
-        if let deferral = error as? Deferral {
+        if let malformed = error as? Malformed {
+            unit.status = .failed
+            unit.coverage.append(malformed.cutOff ? "\(label): output cut off at the \(budget.reservedOutputTokens)-token output budget"
+                                 : "\(label): malformed output after retry")
+        } else if let deferral = error as? Deferral {
             unit.status = .deferred; unit.coverage.append("\(label) deferred: \(deferral.reason)")
         } else if error is CancellationError {
             unit.status = .deferred; unit.coverage.append("\(label) cancelled")
@@ -416,15 +472,66 @@ extension InterpretationPipeline {
 
     static let scannedPageHold = "no independent text layer (scanned page); verify the quote against the source image"
 
-    // ponytail: an ID must start a line and look like A101, A-101, S2.1 or A1.01. A door or equipment tag alone on a
-    // line (D104) still matches, and IDs inside a sentence are skipped; use title-block position if real sheets need it.
+    // Computed, not stored: Regex is not Sendable.
+    private static var sheetLabel: Regex<(Substring, Substring)> { #/^SHEET(?:\s+(?:NO\.?|NUMBER|#))?\s*:?\s*(.*)$/#.ignoresCase() }
+    private static var sheetToken: Regex<Substring> { #/^[A-Z]{1,8}[.-]?\d{1,3}(?:\.\d{1,2})?$/# }
+
+    /// Sheet IDs from text alone: the token beside a "SHEET:" label, on its line or the next. Without any label, an ID
+    /// that starts a line and looks like A101, A-101, S2.1 or A1.01.
+    // ponytail: with no label, a door or equipment tag alone on a line (D104) still matches and IDs inside a sentence
+    // are skipped. A labelled page never falls back to the pattern, because code references (R314 ...) match it too.
     static func sheetIDs(in text: String) -> [String] {
-        var seen = Set<String>()
-        return text.split(separator: "\n").compactMap { line in
-            let line = line.trimmingCharacters(in: .whitespaces)
-            guard let match = line.firstMatch(of: #/^[A-Z]{1,2}-?(?:\d{3}|\d{1,2}\.\d{1,2})(?![A-Za-z0-9.\/-])/#) else { return nil }
-            return seen.insert(String(match.output)).inserted ? String(match.output) : nil
+        let lines = text.split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) }
+        var found: [String] = [], labelled = false
+        for (index, line) in lines.enumerated() {
+            guard let match = line.wholeMatch(of: sheetLabel) else { continue }
+            let rest = match.output.1.trimmingCharacters(in: .whitespaces)
+            let token = rest.isEmpty ? (index + 1 < lines.count ? lines[index + 1] : "") : rest
+            guard rest.isEmpty || token.wholeMatch(of: sheetToken) != nil else { continue } // "SHEET INDEX" is not a label
+            labelled = true
+            if token.wholeMatch(of: sheetToken) != nil, !found.contains(token) { found.append(token) }
         }
+        if labelled { return found }
+        for line in lines {
+            guard let match = line.firstMatch(of: #/^[A-Z]{1,2}-?(?:\d{3}|\d{1,2}\.\d{1,2})(?![A-Za-z0-9.\/-])/#) else { continue }
+            if !found.contains(String(match.output)) { found.append(String(match.output)) }
+        }
+        return found
+    }
+
+    /// On a PDF page the ID is the ID-shaped line nearest the "SHEET:" label: a text layer lists title-block strings in
+    /// drawing order, so the label and its value are often far apart in the text but next to each other on the sheet.
+    // ponytail: first "SHEET:" label only, and the ID must sit within a tenth of the page's long side of it.
+    static func sheetIDs(on page: PDFPage, text: String) -> [String] {
+        let string = text as NSString, label = string.range(of: "SHEET:", options: .caseInsensitive)
+        let whole = (page.string ?? "") as NSString
+        guard label.location != NSNotFound, whole.isEqual(to: text) || whole.contains(text),
+              let labelBounds = page.selection(for: whole.range(of: "SHEET:", options: .caseInsensitive))?.bounds(for: page) else {
+            return sheetIDs(in: text)
+        }
+        let box = page.bounds(for: .mediaBox), reach = max(box.width, box.height) / 10
+        var best: (id: String, distance: CGFloat)?
+        whole.enumerateSubstrings(in: NSRange(location: 0, length: whole.length), options: .byLines) { line, range, _, _ in
+            guard let id = line?.trimmingCharacters(in: .whitespaces), id.wholeMatch(of: sheetToken) != nil,
+                  let bounds = page.selection(for: range)?.bounds(for: page) else { return }
+            let distance = hypot(bounds.midX - labelBounds.midX, bounds.midY - labelBounds.midY)
+            if distance <= reach, distance < best?.distance ?? .infinity { best = (id, distance) }
+        }
+        return best.map { [$0.id] } ?? []
+    }
+
+    /// Lines printed on most sheets of a set are title block, not that page's content.
+    // ponytail: exact-line match, rescanned for every page read. A title-block line that wraps differently on some
+    // sheets survives, and set-wide status notes are dropped with the rest; cache per document if sets get large.
+    static let titleBlockMinimumPages = 5
+    static func repeatedLines(in document: PDFDocument) -> Set<String> {
+        guard document.pageCount >= titleBlockMinimumPages else { return [] }
+        var pagesWithLine: [String: Int] = [:]
+        for index in 0..<document.pageCount {
+            let lines = (document.page(at: index)?.string ?? "").split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) }
+            for line in Set(lines) where !line.isEmpty { pagesWithLine[line, default: 0] += 1 }
+        }
+        return Set(pagesWithLine.filter { $0.value * 2 > document.pageCount }.keys)
     }
 
     /// Every candidate word appears in the quote, in the same order: "10 ft x 12 ft" is not "12 ft x 10 ft".
@@ -438,15 +545,16 @@ extension InterpretationPipeline {
     }
 
     /// Line-bounded chunks of at most `max` characters; overlong lines are split hard.
-    static func chunks(_ text: String, max: Int) -> [String] {
+    static func chunks(_ text: String, max: Int, maxLines: Int = .max) -> [String] {
         var chunks: [String] = []
-        var current = ""
+        var current = "", lines = 0
         for line in text.split(separator: "\n") {
             var rest = Substring(line)
             while !rest.isEmpty {
                 let piece = rest.prefix(max); rest = rest.dropFirst(piece.count)
-                if !current.isEmpty, current.count + 1 + piece.count > max { chunks.append(current); current = "" }
+                if !current.isEmpty, current.count + 1 + piece.count > max || lines >= maxLines { chunks.append(current); current = ""; lines = 0 }
                 current += current.isEmpty ? piece : "\n" + piece
+                lines += 1
             }
         }
         if !current.isEmpty { chunks.append(current) }

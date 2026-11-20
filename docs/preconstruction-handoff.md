@@ -281,32 +281,50 @@ A real 17-sheet residential remodel set (36 x 24 in, native text on every sheet)
 **Changes**
 - **Failure handling.** No stage asks the manager for structured output. The pipeline decodes (the whole output, the outermost JSON object, or an answer missing only its closing brace), retries once, and fails that page only. Cut-off output is recognised and not retried. S01's assertion on the structured-output flag was changed to match.
 - **Compact output.** The instruction asks for `kind` and `text` only, on one line. `quote`, `confidence` and `bbox` are no longer requested.
-- **Two reviewed holds changed** (A17's expectations were edited; this deserves an independent review). A candidate with no quote is checked against the source by its own text instead of being held as "no source quote", and its stored quote stays null. A candidate with no confidence is no longer held as "low confidence"; a stated confidence under 0.6 still is.
+- **Two reviewed holds changed** (A17's expectations were edited; independently reviewed, see below). A candidate with no quote is checked against the source by its own text instead of being held as "no source quote", and its stored quote stays null. That text must sit on one source line or be whole consecutive lines. A candidate with no confidence is no longer held as "low confidence"; a stated confidence under 0.6 still is.
 - **Budget.** Chunks are bounded by lines as well as characters. Defaults are 1,500 characters, 60 lines, 12 chunks and 3,072 output tokens (were 6,000 / no line bound / 4 / 1,024). `maxInputLines` is in the unit ID.
-- **Distinct lines.** Each distinct line of a page is sent to the model once, and a candidate with the same kind, text and quote is kept once.
-- **Title block.** In a PDF of 5 or more pages, a line printed on more than half the pages is skipped and counted in the unit's coverage. Set-wide status notes ("not for construction") go with it and are no longer candidates on any sheet. Read Page shows that coverage line as its message on multi-sheet sets.
-- **Sheet IDs.** On a native-text page the ID is the ID-shaped line nearest the `SHEET:` label by position, because the text layer lists title-block strings in drawing order. From text alone (scans) it is the token beside the label. The line-start pattern is used only when a page has no label. The ID's line is not sent to the model, and a failed page still reports its sheet.
-- Pipeline version is `precon-interpret-8`. The eval's source-support metric counts an unquoted candidate by its own text.
+- **Distinct lines.** Each distinct line of a page is sent to the model once, with the number of repeats left out recorded in coverage, and a candidate with the same kind, text and quote is kept once.
+- **Title block.** In a PDF of 5 or more pages, a line printed on at least four of every five pages is skipped and counted in the unit's coverage. Set-wide status notes ("not for construction") go with it and are no longer candidates on any sheet. Read Page shows that coverage line as its message on multi-sheet sets.
+- **Sheet IDs.** On a native-text page the ID is the ID-shaped line nearest a `SHEET:` label line by position (or the ID on the label's own line), because the text layer lists title-block strings in drawing order. From text alone (scans) it is the token beside the label. The line-start pattern is used only when a page has no label. The ID's line is not sent to the model, and a failed page still reports its sheet.
+- Pipeline version is `precon-interpret-9`. The eval's source-support metric counts an unquoted candidate by its own text.
 
 **Results**
 
 | | Before | After |
 |---|---|---|
-| Dev set extraction | 82/85 | 84/85, no trap items, 2 extras (`dev-compact-3`) |
-| Real set, sheets read | stopped at sheet 3 with defaults; 9 of 17 with enlarged settings in 16 min | 16 of 17 with defaults in 4.5 min (`run-5`) |
+| Dev set extraction | 82/85 | 84/85, no trap items, 2 extras, nothing held (`dev-review-2`) |
+| Real set, sheets read | stopped at sheet 3 with defaults; 9 of 17 with enlarged settings in 16 min | 16 of 17 with defaults in 5 min (`run-7`); the failed sheet keeps 65 candidates |
 | Real set, sheet IDs | 3 of 17, plus 12 wrong | 17 of 17 |
-| Real set, candidates | 362 from 9 sheets, title block included | 743 from 16 sheets, 1 duplicate |
+| Real set, candidates | 362 from 9 sheets, title block included | 807 from 17 sheets, 27 held |
 
 The real set is now a tuning set: these are counts, not accuracy. The dev set has single pages and no `SHEET:` labels, so it says nothing about the title-block or sheet-ID rules; those rest on this one plan set and on mock tests.
 
 **Still wrong on the real set**
-- One sheet still fails to a repetition loop in the last run, and the affected sheet varies between runs (intermediate runs lost between one and four sheets). Not fixed. Options not yet tried: a repetition penalty on the generation settings, or keeping the distinct candidates from a looping answer.
-- Content quality is poor. Of the 743 candidates, 116 are three characters or fewer, and kinds are misused (equipment, fixtures and circuit labels as rooms or materials). Real sheets carry schedules, legends, keynotes and equipment that the four kinds don't describe. The synthetic sets predicted none of this.
+- One sheet still fails to a repetition loop in the last run, and the affected sheet varies between runs (intermediate runs lost between one and four sheets). The loop itself is not fixed; its cost is smaller, because the candidates an answer finished before the cut are kept and the page's other chunks are still read. The page stays `failed`, so it is not saved and a re-read tries again. Not yet tried: a repetition penalty on the generation settings.
+- Content quality is poor. Of the 807 candidates, 117 are three characters or fewer, and kinds are misused (equipment, fixtures and circuit labels as rooms or materials). Real sheets carry schedules, legends, keynotes and equipment that the four kinds don't describe. The synthetic sets predicted none of this.
 - A few title-block lines leak where a line wraps differently on some sheets.
-- Only 13 candidates were held; the rest were offered, so the holds filter almost nothing here.
+- Only 27 candidates were held; the rest were offered, so the holds filter almost nothing here.
 - The held-out synthetic set is spent and was not rerun; the prompt changed, so its earlier 22/22 no longer applies.
 - Vision crops get the same compact instruction and have still never run against a real model.
 - Open product question for the user: what should be extracted from a real sheet.
+
+**Independent review of this branch (2026-11-20) and what was done about it**
+
+Fixed, each with a test:
+- The sheet-ID rule took the first `SHEET:` text anywhere, so a note such as "SEE SHEET: ..." beside a tag made the tag the sheet ID. A label is now a line holding nothing but the label, or the label and its ID.
+- An unquoted candidate could be assembled from words on neighbouring lines. It must now sit on one line or be whole consecutive lines (a wrapped note). Candidates are checked against the page without its title block.
+- Lines shared by some sheets (three of five) were treated as title block. The share is now four in five; on the real set every title-block line was on 14 or more of 17 sheets and nothing else on more than 6.
+- A closed answer with a badly quoted string was reported as a budget cut-off and not retried; an empty answer missing its closing brace failed the page.
+- One candidate of an unknown kind or shape failed the whole chunk. It is now skipped and counted in coverage.
+
+Tried and reverted: sending every line except back-to-back repeats, to stop wrapped notes losing a shared line. Loops came back (4 of 17 sheets failed, against 1), so distinct lines stay and the repeats are counted in coverage. A wrapped note whose last line also ended an earlier note still reaches the model without that line.
+
+Left as they are:
+- From text alone, a label whose ID is not on its line or the next gives no ID. The review wanted the line-start pattern as a fallback; that would offer code references as sheet IDs, and no ID beats a wrong one.
+- The adapter and preflight still require a model's structured-output capability (C5-01), although the manager is no longer asked for structured output.
+- The retry sends the same prompt (`isRetry` is unused by the adapter). It helps only because the model's output varies between runs.
+- The eval's source-support metric uses a plain substring test and ignores holds.
+- A held low-confidence candidate stays held if the same text arrives again with a higher confidence.
 
 ## Next steps (in order)
 

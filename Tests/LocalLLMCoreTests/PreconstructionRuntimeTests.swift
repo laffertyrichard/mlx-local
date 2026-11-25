@@ -181,7 +181,30 @@ struct PreconstructionRuntimeTests {
         }
     }
 
-    @Test("S01: chosen text model receives one local structured reasoning stage")
+    @Test("output that is cut off or not JSON fails that page only; fenced JSON is still read")
+    func invalidOutputFailsOnePage() async throws {
+        let w = try RtWorkspace(); defer { w.cleanUp() }
+        let cut = RtRuntime { call,_,_ in call == 1 ? #"{"candidates":[{"kind":"note","text":"12"# : "```json\n" + rtAnswer + "\n```" }
+        let units = try await rtPipeline(w, PreconRuntimeInterpreter(manager: rtManager(cut), textModelID: "text")).run(w.sources(pages: 2))
+        #expect(units.map(\.status) == [.failed, .complete])
+        #expect(units.first?.coverage.first?.contains("cut off") == true)
+        #expect(await cut.calls.count == 2, "a cut-off answer is not asked for again")
+        struct Answer: Decodable { var candidates: [[String: String]] }
+        #expect(InterpretationPipeline.decode(Answer.self, from: #"{"candidates":[{"kind":"note","text":"a"}]"#)?.candidates.count == 1,
+                "an answer missing only its closing brace is read")
+        #expect(InterpretationPipeline.decode(Answer.self, from: #"{"candidates":[]"#)?.candidates.isEmpty == true)
+        #expect(!InterpretationPipeline.isCutOff(#"{"candidates":[{"kind":"dimension","text":"6" pipe"}]}"#),
+                "a closed answer with a badly quoted string is malformed, so it is asked for again, not blamed on the budget")
+        #expect(!InterpretationPipeline.isCutOff("I found [nothing") && InterpretationPipeline.isCutOff(#"{"candidates":[{"kind":"note"}"#))
+        let other = try RtWorkspace(); defer { other.cleanUp() }
+        let prose = RtRuntime { _,_,_ in "I could not find anything." }
+        let failed = try await rtPipeline(other, PreconRuntimeInterpreter(manager: rtManager(prose), textModelID: "text")).run(other.sources(pages: 2))
+        #expect(failed.map(\.status) == [.failed, .failed])
+        #expect(failed.first?.coverage == ["page 1 chunk 1: malformed output after retry"])
+        #expect(await prose.calls.count == 4, "one retry per page, then the next page is still read")
+    }
+
+    @Test("S01: chosen text model receives one local reasoning stage, decoded by the pipeline")
     func chosenTextModel() async throws {
         let runtime = RtRuntime()
         let adapter = PreconRuntimeInterpreter(manager: rtManager(runtime, models: [rtModel(), rtModel("other")]), textModelID: "text")
@@ -191,7 +214,8 @@ struct PreconstructionRuntimeTests {
         let (stage, input) = try #require(calls.first)
         #expect(stage.kind == .reasoning && stage.modelID == "text" && stage.fallbackModelIDs.isEmpty)
         #expect(stage.requiredCapabilities == [.reasoning])
-        #expect(input.request.localOnly && input.request.requiresStructuredOutput && input.requiresStructuredOutput)
+        #expect(input.request.localOnly && !input.request.requiresStructuredOutput && !input.requiresStructuredOutput,
+                "the pipeline, not the manager, decodes and retries: the manager's JSON check throws away cut-off output")
         #expect(input.request.forcedModelID == "text" && input.request.attachments.isEmpty)
         #expect(input.request.text.contains("12 ft") && input.request.text.contains("Extract JSON"))
         #expect(stage.modelProfile?.generation.maxOutputTokens == 64)

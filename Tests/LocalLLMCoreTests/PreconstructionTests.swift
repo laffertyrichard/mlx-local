@@ -514,7 +514,7 @@ struct PreconstructionInterpretationTests {
         })
     }
 
-    @Test("A17: native text first; unquoted, invented and low-confidence candidates are held and nothing else is written")
+    @Test("A17: native text first; invented and low-confidence candidates are held, an unquoted one is checked by its own text, and nothing else is written")
     func heldCandidates() async throws {
         let workspace = try Workspace(); defer { workspace.cleanUp() }
         let (project, sources) = try plan(workspace)
@@ -526,12 +526,13 @@ struct PreconstructionInterpretationTests {
         let before = (fileDigests(project.appending(path: "revisions")), fileDigests(project.appending(path: "measurements")))
         let mock = MockInterpreter { _, _ in
             candidates([("12 ft", "12 ft - finished faces", 0.9), ("Room Beta", "ROOM BETA", 0.95),
-                        ("14 ft", nil, 0.9), ("10 ft", "10 ft", 0.3)])
+                        ("14 ft", nil, 0.9), ("2 x 3 ft", nil, 0.9), ("10 ft", "10 ft", 0.3)])
         }
         let units = try await InterpretationPipeline(store: workspace.store, project: project, interpreter: mock.closure).run(sources)
         #expect(units.map(\.stage) == [.nativeText] && units[0].status == .held)
         #expect(await mock.calls.allSatisfy { $0.image == nil && $0.text != nil })
-        #expect(units[0].candidates.map(\.heldReason) == [nil, "quote not found in source text", "no source quote", "low confidence"])
+        #expect(units[0].candidates.map(\.heldReason) == [nil, "quote not found in source text", "text not found on a source line", nil, "low confidence"])
+        #expect(units[0].candidates.map(\.quote) == ["12 ft - finished faces", "ROOM BETA", nil, nil, "10 ft"], "an unstated quote stays null")
         #expect(fileDigests(project.appending(path: "revisions")) == before.0)
         #expect(fileDigests(project.appending(path: "measurements")) == before.1)
         #expect(!before.0.isEmpty && !before.1.isEmpty)

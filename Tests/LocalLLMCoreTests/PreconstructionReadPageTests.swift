@@ -81,6 +81,8 @@ struct PreconstructionReadPageTests {
     @Test("sheet IDs are read only from line starts", arguments: [
         ("A101\nRoom", ["A101"]), ("A-201 PLAN\n  S2.1\nA1.01", ["A-201", "S2.1", "A1.01"]), ("G-002\nG-002", ["G-002"]),
         ("Door D104\nM10 bolts\nRev R2\nSee A-501\nA1012\nA-10\nA-101b", []),
+        ("SHEET:\nFRAME.2\nR314 Smoke alarms", ["FRAME.2"]), ("Sheet No: P-4", ["P-4"]), ("SHEET INDEX\nA101", ["A101"]),
+        ("SHEET:\nPROJECT: 7\nR314 Smoke alarms", []),
     ])
     func sheetIDPattern(text: String, expected: [String]) {
         #expect(InterpretationPipeline.sheetIDs(in: text) == expected)
@@ -107,6 +109,125 @@ struct PreconstructionReadPageTests {
         #expect((sheets.first?.heldReason == nil) == !raster)
         #expect(unit.status == (raster ? .held : .complete))
         if !modelAlsoFinds { #expect(sheets.first?.confidence == nil && sheets.first?.quote == "B-310") }
+        // A page whose model output is cut off still reports the sheet it is.
+        let cutOff: PreconInterpreter = { _ in #"{"candidates":[{"kind":"note","text":"Room Yew"},{"kind":"note","text":"Room"# }
+        let other = root.appending(path: "other"); try FileManager.default.createDirectory(at: other, withIntermediateDirectories: true)
+        let failed = try #require(try await InterpretationPipeline(store: store, project: other, interpreter: cutOff)
+            .run(try store.importSource(pdf, into: other, role: .proposed, revision: "T")).first)
+        if !raster {
+            #expect(failed.status == .failed && failed.candidates.map(\.text) == ["Room Yew", "B-310"], "candidates finished before the cut are kept")
+            #expect(failed.interpretedChunks == 0 && failed.plannedChunks == 1 && failed.coverage.last?.contains("cut off") == true)
+        }
+    }
+
+    @Test("chunks are bounded by lines as well as characters")
+    func lineBoundedChunks() {
+        #expect(InterpretationPipeline.chunks("a\nb\nc\nd\ne", max: 100, maxLines: 2) == ["a\nb", "c\nd", "e"])
+        #expect(InterpretationPipeline.chunks("a\nb\nc", max: 100) == ["a\nb\nc"])
+    }
+
+    @Test("a sheet set's title block is skipped, and each sheet's ID is the one beside the SHEET label")
+    func titleBlockAndLabelledSheetID() async throws {
+        let root = FileManager.default.temporaryDirectory.appending(path: "PreconTitle-\(UUID())")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = try PreconProjectStore(root: root), project = root.appending(path: "project")
+        try FileManager.default.createDirectory(at: project, withIntermediateDirectories: true)
+        // Drawn in this order, so the text layer puts the label far from its ID, as real title blocks do.
+        let pdf = root.appending(path: "set.pdf")
+        try Self.draw((1...6).map { page in
+            var items: [(String, CGFloat, CGFloat)] = [("SHEET:", 500, 60), ("OWNER: Sample Owner", 380, 110), ("NOT FOR CONSTRUCTION", 380, 140), ("T.9", 72, 500)]
+            if page < 6 { items.append(("Unique note \(page)", 72, 700)) }
+            return items + [("Q.\(page)", 500, 40)]
+        }, to: pdf)
+        let sources = try store.importSource(pdf, into: project, role: .proposed, revision: "T")
+        final class Seen: @unchecked Sendable { let lock = NSLock(); var texts: [String] = [] }
+        let seen = Seen()
+        let interpreter: PreconInterpreter = { request in
+            let text = request.text ?? ""
+            seen.lock.withLock { seen.texts.append(text) }
+            let first = String(text.split(separator: "\n").first ?? "")
+            return String(decoding: try JSONSerialization.data(withJSONObject: ["candidates": [["kind": "note", "text": first]]]), as: UTF8.self)
+        }
+        let units = try await InterpretationPipeline(store: store, project: project, interpreter: interpreter).run(sources)
+        #expect(units.count == 6 && units.allSatisfy { $0.stage == .nativeText && $0.status == .complete })
+        #expect(seen.texts == (1...5).map { "Unique note \($0)" }, "title-block lines never reach the model, and the empty sixth sheet makes no call")
+        for (index, unit) in units.enumerated() {
+            #expect(unit.candidates.filter { $0.kind == .sheet }.map(\.text) == ["Q.\(index + 1)"], "the far T.9 tag is not the sheet ID")
+            #expect(unit.coverage.count == 1 && unit.coverage[0].contains("repeated on nearly every sheet"))
+        }
+        let note = try #require(units[0].candidates.first { $0.kind == .note })
+        #expect(note.text == "Unique note 1" && note.heldReason == nil && note.quote == nil && note.confidence == nil,
+                "a compact candidate with no quote or confidence is checked by its own text and offered")
+        #expect(units[5].plannedChunks == 0 && units[5].candidates.count == 1)
+    }
+
+    /// Each page is a list of strings drawn at page positions, in order, so the text layer follows drawing order.
+    static func draw(_ pages: [[(String, CGFloat, CGFloat)]], to pdf: URL) throws {
+        var box = CGRect(x: 0, y: 0, width: 612, height: 792)
+        let context = try #require(CGContext(pdf as CFURL, mediaBox: &box, nil))
+        for items in pages {
+            context.beginPDFPage(nil)
+            NSGraphicsContext.saveGraphicsState()
+            NSGraphicsContext.current = NSGraphicsContext(cgContext: context, flipped: false)
+            for (text, x, y) in items {
+                NSAttributedString(string: text, attributes: [.font: NSFont.systemFont(ofSize: 12)]).draw(at: NSPoint(x: x, y: y))
+            }
+            NSGraphicsContext.restoreGraphicsState()
+            context.endPDFPage()
+        }
+        context.closePDF()
+    }
+
+    @Test("a SHEET reference inside a note is not the label, and content shared by some sheets is not title block")
+    func sheetLabelAndSharedContent() throws {
+        let root = FileManager.default.temporaryDirectory.appending(path: "PreconLabel-\(UUID())")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let pdf = root.appending(path: "set.pdf")
+        let common: [(String, CGFloat, CGFloat)] = [("OWNER: Sample Owner", 380, 110)], shared: [(String, CGFloat, CGFloat)] = [("Shared room", 300, 400)]
+        try Self.draw([
+            [("SEE SHEET: W-501", 72, 700), ("R314", 72, 680), ("SHEET: K-7", 480, 40)] + common + shared,
+            [("SHEET: 3 OF 9", 72, 700), ("D104", 72, 680), ("SHEET:", 500, 60), ("K-8", 500, 40)] + common + shared,
+            common + shared, common, common,
+        ], to: pdf)
+        let document = try #require(PDFDocument(url: pdf))
+        let ids = try (0..<2).map { index in
+            let page = try #require(document.page(at: index))
+            return InterpretationPipeline.sheetIDs(on: page, text: page.string ?? "")
+        }
+        #expect(ids == [["K-7"], ["K-8"]], "a tag beside a note that mentions a sheet is not the sheet ID")
+        #expect(InterpretationPipeline.repeatedLines(in: document) == ["OWNER: Sample Owner"], "a line on three of five sheets is content")
+    }
+
+    @Test("an unquoted candidate must sit on one source line or be whole lines; an unknown kind is skipped, not fatal")
+    func unquotedCandidatesAndUnknownKinds() async throws {
+        let root = FileManager.default.temporaryDirectory.appending(path: "PreconLines-\(UUID())")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = try PreconProjectStore(root: root), project = root.appending(path: "project")
+        try FileManager.default.createDirectory(at: project, withIntermediateDirectories: true)
+        let lines = ["UNIT 12", "FT CLR", "Width 14 ft 6 in", "PROVIDE BLOCKING AT", "ALL WALL CABINETS", "PROVIDE BACKING AT",
+                     "ALL WALL CABINETS", "TAG", "TAG", "TAG"]
+        let item = PreconEvaluationCase(id: "lines", raster: false, lines: lines, expected: [], absent: [])
+        let pdf = try PreconEvaluationSet(label: "lines", cases: [item]).generate(item, in: root)
+        final class Seen: @unchecked Sendable { let lock = NSLock(); var texts: [String] = [] }
+        let seen = Seen()
+        let answer = ["12 FT": "dimension", "12 FT CLR Width": "note", "6 in": "dimension", "PROVIDE BACKING AT ALL WALL CABINETS": "note",
+                      "BLOCKING AT ALL": "note", "TAG": "door"]
+        let order = ["12 FT", "12 FT CLR Width", "6 in", "PROVIDE BACKING AT ALL WALL CABINETS", "BLOCKING AT ALL", "TAG"]
+        let interpreter: PreconInterpreter = { request in
+            seen.lock.withLock { seen.texts.append(request.text ?? "") }
+            return String(decoding: try JSONSerialization.data(withJSONObject: ["candidates": order.map { ["kind": answer[$0]!, "text": $0] }]), as: UTF8.self)
+        }
+        let unit = try #require(try await InterpretationPipeline(store: store, project: project, interpreter: interpreter)
+            .run(try store.importSource(pdf, into: project, role: .proposed, revision: "T")).first)
+        #expect(seen.texts == [(lines.prefix(4) + [lines[4], lines[5], "TAG"]).joined(separator: "\n")], "each distinct line is sent once")
+        let across = "text not found on a source line"
+        #expect(unit.candidates.map(\.heldReason) == [across, across, nil, nil, across],
+                "words from neighbouring lines do not make a candidate; a note of whole wrapped lines does")
+        #expect(unit.status == .held && unit.coverage == ["page 1: 3 repeats of a line already sent were not sent again",
+                                                          "page 1 chunk 1: 1 candidates of an unknown kind or shape ignored"])
     }
 
     @Test("the worked example shares no value with either evaluation fixture", arguments: ["expected", "dev"])
